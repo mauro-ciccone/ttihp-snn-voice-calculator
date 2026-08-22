@@ -15,9 +15,13 @@ Explain how your project works
 
 ## How to test
 
+This is a Spiking Neural Network for audio classification.
+
 Explain how to use your project
 
 ## External hardware
+
+This is a Spiking Neural Network for audio classification.
 
 List external hardware used in your project (e.g. PMOD, LED display, etc), if any
 

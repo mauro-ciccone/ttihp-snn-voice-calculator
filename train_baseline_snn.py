@@ -9,11 +9,9 @@ from tqdm import tqdm
 # --- 1. Dataset & Pre-processing ---
 class CalculatorDataset(Dataset):
     def __init__(self, pt_path, n_mels=16):
-        self.data = torch.load(pt_path)
+        self.data = torch.load("./data/calculator_dataset_constrained.pt") # New file
         self.labels = [
-            "zero", "one", "two", "three", "four",
-            "five", "six", "seven", "eight", "nine",
-            "forward", "backward"
+            "one", "two", "three", "four", "five", "six", "left", "right" # New labels
         ]
         self.label_to_idx = {word: i for i, word in enumerate(self.labels)}
         
@@ -90,7 +88,7 @@ def train():
     train_loader = DataLoader(train_set, batch_size=64, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=64, shuffle=False)
 
-    model = SpikingVoiceNet(num_inputs=16, num_hidden=40, num_outputs=12).to(device)
+    model = SpikingVoiceNet(num_inputs=16, num_hidden=40, num_outputs=8).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=2e-3)
     loss_fn = nn.CrossEntropyLoss()
 

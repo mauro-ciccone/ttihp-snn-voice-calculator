@@ -19,6 +19,12 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
 # ==========================================
 EXP_LABEL = "confusion_penalty_foif_zwoi"
 
+# --- NEW RESUME SETTINGS ---
+RESUME_RUN = True  # Set to False for a completely fresh run
+RESUME_PATH = "experiments/20260824_193713_confusion_penalty_foif_zwoi" # The folder containing your model.pth
+ADDITIONAL_EPOCHS = 300  # How many NEW epochs to add to the history
+# ---------------------------
+
 CONFIG = {
     "exp_label": EXP_LABEL,
     "sample_rate": 16000,
@@ -37,13 +43,6 @@ CONFIG = {
     "lambda_reg": 0.05,
     "lambda_confusion": 0.10    # Weight for pairwise foif/zwoi separation penalty
 }
-
-# ==========================================
-# 1.5 RESUME SETTINGS
-# ==========================================
-RESUME_DIR = "experiments/20260824_193713_confusion_penalty_foif_zwoi"
-START_EPOCH = 500
-CONFIG["epochs"] = 1000  # Set this to your new final target
 
 LABELS = ["eis", "zwoi", "drü", "vier", "foif", "sächs", "plus", "minus", "noise"]
 LABEL_TO_IDX = {lbl: i for i, lbl in enumerate(LABELS)}
@@ -138,6 +137,32 @@ class SpikingNet(nn.Module):
 # ==========================================
 def main():
     device = torch.device("cpu")
+
+    epoch_history = []
+    start_epoch = 0
+    
+    # --- NEW: AUTO-LOAD PREVIOUS JSON CONFIG & HISTORY ---
+    if RESUME_RUN:
+        # Find the json file in the target directory
+        json_files = [f for f in os.listdir(RESUME_PATH) if f.endswith('.json')]
+        old_json_path = os.path.join(RESUME_PATH, json_files[-1])
+        
+        with open(old_json_path, "r") as f:
+            old_data = json.load(f)
+            
+        # 1. Restore the exact hyperparameters
+        for key, value in old_data["config"].items():
+            CONFIG[key] = value
+            
+        # 2. Restore the timeline
+        epoch_history = old_data.get("epoch_history", [])
+        start_epoch = epoch_history[-1]["epoch"] if epoch_history else 0
+        
+        # 3. Update total epochs for this specific run
+        CONFIG["epochs"] = start_epoch + ADDITIONAL_EPOCHS
+        
+        print(f"\n>>> AUTO-RESUME: Inherited config and {start_epoch} epochs from {old_json_path}")
+    # -----------------------------------------------------
     
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     exp_dir = os.path.join("experiments", f"{timestamp}_{CONFIG['exp_label']}")
@@ -158,6 +183,12 @@ def main():
     print(f"Train virtual size: {len(train_ds)} | Untouched Test size: {len(test_ds)}")
 
     model = SpikingNet().to(device)
+
+    if RESUME_RUN:
+        model_path = os.path.join(RESUME_PATH, "model.pth")
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        print(f">>> AUTO-RESUME: Loaded physical weights from {model_path} <<<\n")
+
     optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["lr"])
     ce_loss_fn = nn.CrossEntropyLoss()
 
@@ -166,7 +197,7 @@ def main():
 
     epoch_history = []
 
-    for epoch in range(CONFIG["epochs"]):
+    for epoch in range(start_epoch, CONFIG["epochs"]):
         model.train()
         total_loss, correct, total = 0, 0, 0
         
@@ -205,28 +236,49 @@ def main():
             
             pbar.set_postfix({"Loss": f"{loss.item():.3f}", "Acc": f"{(correct/total)*100:.1f}%"})
 
+        # --- MODIFIED: EVALUATION LOOP WITH TEST LOSS ---
         model.eval()
-        val_correct, val_total = 0, 0
+        val_correct, val_total, val_loss_sum = 0, 0, 0.0
         with torch.no_grad():
             for x, y in test_loader:
                 x, y = x.to(device), y.to(device)
-                out = model(x).sum(dim=1)
-                val_correct += (out.argmax(dim=1) == y).sum().item()
+                spk_out = model(x)
+                spike_counts = spk_out.sum(dim=1)
+                
+                # Calculate Test Loss identically to Train Loss
+                ce_loss = ce_loss_fn(spike_counts, y)
+                
+                target_counts = torch.zeros_like(spike_counts)
+                target_counts.scatter_(1, y.unsqueeze(1), CONFIG["target_spikes"])
+                reg_loss = nn.functional.mse_loss(spike_counts, target_counts)
+                
+                spikes_zwoi = spike_counts[:, idx_zwoi]
+                spikes_foif = spike_counts[:, idx_foif]
+                is_foif = (y == idx_foif).float()
+                is_zwoi = (y == idx_zwoi).float()
+                conf_loss = torch.mean((spikes_zwoi * is_foif)**2 + (spikes_foif * is_zwoi)**2)
+
+                loss = ce_loss + (CONFIG["lambda_reg"] * reg_loss) + (CONFIG["lambda_confusion"] * conf_loss)
+                val_loss_sum += loss.item()
+
+                val_correct += (spike_counts.argmax(dim=1) == y).sum().item()
                 val_total += y.size(0)
                 
         train_acc = (correct / total) * 100
         test_acc = (val_correct / val_total) * 100
-        avg_loss = total_loss / len(train_loader)
+        avg_train_loss = total_loss / len(train_loader)
+        avg_test_loss = val_loss_sum / len(test_loader)
         
         epoch_history.append({
             "epoch": epoch + 1,
-            "loss": round(avg_loss, 4),
+            "train_loss": round(avg_train_loss, 4),
+            "test_loss": round(avg_test_loss, 4),
             "train_acc": round(train_acc, 2),
             "test_acc": round(test_acc, 2)
         })
 
         if (epoch + 1) % 10 == 0 or epoch == CONFIG["epochs"] - 1:
-            print(f"Epoch {epoch+1:03d}/{CONFIG['epochs']} Summary -> Train: {train_acc:5.1f}% | Untouched Test: {test_acc:5.1f}% | Loss: {avg_loss:.3f}")
+            print(f"Epoch {epoch+1:03d}/{CONFIG['epochs']} Summary -> Train: {train_acc:5.1f}% | Test: {test_acc:5.1f}% | Train Loss: {avg_train_loss:.3f} | Test Loss: {avg_test_loss:.3f}")
 
     # Deep Diagnostics
     model.eval()

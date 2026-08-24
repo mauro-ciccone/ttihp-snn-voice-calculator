@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
 # ==========================================
 # 1. EXPERIMENT HYPERPARAMETERS & CONFIG
 # ==========================================
-EXP_LABEL = "target_spike_reg_beta88"
+EXP_LABEL = "confusion_penalty_foif_zwoi"
 
 CONFIG = {
     "exp_label": EXP_LABEL,
@@ -27,14 +27,15 @@ CONFIG = {
     "hop_length": 128,          # ~126 time steps per 1.0s window
     "num_hidden": 40,
     "num_outputs": 9,
-    "beta": 0.88,               # Shortened decay window (~50-70ms)
+    "beta": 0.88,
     "epochs": 250,
     "batch_size": 32,
     "lr": 8e-4,
-    "train_multiplier": 10,     # 10x virtual augmentation per epoch
-    "test_holdout_count": 15,   # Strictly reserve last 15 files per class for test
-    "target_spikes": 40.0,      # Target spike count for the winning neuron
-    "lambda_reg": 0.05          # Regularization weight
+    "train_multiplier": 10,
+    "test_holdout_count": 15,
+    "target_spikes": 40.0,
+    "lambda_reg": 0.05,
+    "lambda_confusion": 0.10    # Weight for pairwise foif/zwoi separation penalty
 }
 
 LABELS = ["eis", "zwoi", "drü", "vier", "foif", "sächs", "plus", "minus", "noise"]
@@ -61,9 +62,9 @@ class HighResVoiceDataset(Dataset):
                 raise ValueError(f"Class '{label}' only has {len(wavs)} files. Need > {holdout}.")
 
             if split == "train":
-                selected = wavs[:-holdout]  # All earlier files for training
+                selected = wavs[:-holdout]
             else:
-                selected = wavs[-holdout:]  # Last N files reserved for test
+                selected = wavs[-holdout:]
                 
             for f in selected:
                 self.files.append((os.path.join(folder, f), label))
@@ -155,10 +156,11 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["lr"])
     ce_loss_fn = nn.CrossEntropyLoss()
 
-    # Track exact convergence
+    idx_zwoi = LABEL_TO_IDX["zwoi"]
+    idx_foif = LABEL_TO_IDX["foif"]
+
     epoch_history = []
 
-    # 2. Train Loop
     for epoch in range(CONFIG["epochs"]):
         model.train()
         total_loss, correct, total = 0, 0, 0
@@ -170,14 +172,25 @@ def main():
             optimizer.zero_grad()
             
             spk_out = model(x)
-            spike_counts = spk_out.sum(dim=1) 
+            spike_counts = spk_out.sum(dim=1)
 
+            # 1. Base CrossEntropy
             ce_loss = ce_loss_fn(spike_counts, y)
+
+            # 2. Target Spike Activity Regularization
             target_counts = torch.zeros_like(spike_counts)
             target_counts.scatter_(1, y.unsqueeze(1), CONFIG["target_spikes"])
             reg_loss = nn.functional.mse_loss(spike_counts, target_counts)
 
-            loss = ce_loss + (CONFIG["lambda_reg"] * reg_loss)
+            # 3. Targeted Pairwise Confusion Penalty (foif <-> zwoi)
+            spikes_zwoi = spike_counts[:, idx_zwoi]
+            spikes_foif = spike_counts[:, idx_foif]
+            is_foif = (y == idx_foif).float()
+            is_zwoi = (y == idx_zwoi).float()
+
+            conf_loss = torch.mean((spikes_zwoi * is_foif)**2 + (spikes_foif * is_zwoi)**2)
+
+            loss = ce_loss + (CONFIG["lambda_reg"] * reg_loss) + (CONFIG["lambda_confusion"] * conf_loss)
             loss.backward()
             optimizer.step()
 
@@ -187,7 +200,6 @@ def main():
             
             pbar.set_postfix({"Loss": f"{loss.item():.3f}", "Acc": f"{(correct/total)*100:.1f}%"})
 
-        # Evaluate on Test Set EVERY epoch for a high-res learning curve
         model.eval()
         val_correct, val_total = 0, 0
         with torch.no_grad():
@@ -201,7 +213,6 @@ def main():
         test_acc = (val_correct / val_total) * 100
         avg_loss = total_loss / len(train_loader)
         
-        # Log to history
         epoch_history.append({
             "epoch": epoch + 1,
             "loss": round(avg_loss, 4),
@@ -212,7 +223,7 @@ def main():
         if (epoch + 1) % 10 == 0 or epoch == CONFIG["epochs"] - 1:
             print(f"Epoch {epoch+1:03d}/{CONFIG['epochs']} Summary -> Train: {train_acc:5.1f}% | Untouched Test: {test_acc:5.1f}% | Loss: {avg_loss:.3f}")
 
-    # 3. Deep Evaluation & Confidence Mapping
+    # Deep Diagnostics
     model.eval()
     confusion = torch.zeros(9, 9, dtype=torch.int32)
     confidence_data = []
@@ -239,7 +250,6 @@ def main():
                     "margin": margins[i].item()
                 })
 
-    # 4. Spike Margin Threshold Sweeps
     threshold_results = {}
     total_samples = len(confidence_data)
     margin_steps = [0, 2, 5, 10, 15, 20, 25, 30]
@@ -262,7 +272,6 @@ def main():
             "accuracy_pct": round(acc_retained, 2)
         }
 
-    # 5. Archive Checkpoint and JSON Manifest
     model_save_path = os.path.join(exp_dir, "model.pth")
     torch.save(model.state_dict(), model_save_path)
 
@@ -273,7 +282,7 @@ def main():
         "base_accuracy": threshold_results["margin_0"]["accuracy_pct"],
         "confusion_matrix": confusion.tolist(),
         "threshold_analysis": threshold_results,
-        "epoch_history": epoch_history  # <--- Learning curve embedded here
+        "epoch_history": epoch_history
     }
 
     json_save_path = os.path.join(exp_dir, "config_and_metrics.json")
@@ -281,9 +290,6 @@ def main():
         json.dump(metrics_payload, f, indent=4)
 
     print(f"\nSaved artifacts to {exp_dir}")
-
-if __name__ == "__main__":
-    main()
 
 if __name__ == "__main__":
     main()

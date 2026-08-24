@@ -1,0 +1,176 @@
+{
+    "timestamp": "20260824_150513",
+    "config": {
+        "exp_label": "target_spike_reg_beta88",
+        "sample_rate": 16000,
+        "n_mels": 16,
+        "n_fft": 512,
+        "hop_length": 128,
+        "num_hidden": 40,
+        "num_outputs": 9,
+        "beta": 0.88,
+        "epochs": 150,
+        "batch_size": 32,
+        "lr": 0.0008,
+        "train_multiplier": 10,
+        "test_holdout_count": 15,
+        "target_spikes": 40.0,
+        "lambda_reg": 0.05,
+        "computed_time_steps": 126
+    },
+    "labels": [
+        "eis",
+        "zwoi",
+        "dr\u00fc",
+        "vier",
+        "foif",
+        "s\u00e4chs",
+        "plus",
+        "minus",
+        "noise"
+    ],
+    "base_accuracy": 80.74,
+    "confusion_matrix": [
+        [
+            13,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+        ],
+        [
+            0,
+            14,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+        ],
+        [
+            0,
+            0,
+            15,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        [
+            0,
+            0,
+            2,
+            10,
+            2,
+            0,
+            0,
+            0,
+            1
+        ],
+        [
+            0,
+            4,
+            2,
+            1,
+            6,
+            0,
+            2,
+            0,
+            0
+        ],
+        [
+            0,
+            0,
+            0,
+            0,
+            0,
+            15,
+            0,
+            0,
+            0
+        ],
+        [
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            14,
+            0,
+            0
+        ],
+        [
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            14,
+            0
+        ],
+        [
+            1,
+            0,
+            2,
+            0,
+            2,
+            0,
+            1,
+            1,
+            8
+        ]
+    ],
+    "threshold_analysis": {
+        "margin_0": {
+            "retained_count": 135,
+            "retention_pct": 100.0,
+            "accuracy_pct": 80.74
+        },
+        "margin_2": {
+            "retained_count": 123,
+            "retention_pct": 91.11,
+            "accuracy_pct": 86.18
+        },
+        "margin_5": {
+            "retained_count": 105,
+            "retention_pct": 77.78,
+            "accuracy_pct": 89.52
+        },
+        "margin_10": {
+            "retained_count": 66,
+            "retention_pct": 48.89,
+            "accuracy_pct": 92.42
+        },
+        "margin_15": {
+            "retained_count": 48,
+            "retention_pct": 35.56,
+            "accuracy_pct": 100.0
+        },
+        "margin_20": {
+            "retained_count": 26,
+            "retention_pct": 19.26,
+            "accuracy_pct": 100.0
+        },
+        "margin_25": {
+            "retained_count": 14,
+            "retention_pct": 10.37,
+            "accuracy_pct": 100.0
+        },
+        "margin_30": {
+            "retained_count": 5,
+            "retention_pct": 3.7,
+            "accuracy_pct": 100.0
+        }
+    }
+}

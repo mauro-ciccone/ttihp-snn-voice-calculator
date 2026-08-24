@@ -1,0 +1,147 @@
+{
+    "timestamp": "20260824_140955",
+    "model": "custom_calculator_snn.pth",
+    "base_accuracy": 85.56,
+    "confusion_matrix": [
+        [
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        [
+            0,
+            8,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            1
+        ],
+        [
+            0,
+            0,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        [
+            0,
+            0,
+            0,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        [
+            0,
+            3,
+            0,
+            1,
+            6,
+            0,
+            0,
+            0,
+            0
+        ],
+        [
+            0,
+            0,
+            0,
+            0,
+            0,
+            10,
+            0,
+            0,
+            0
+        ],
+        [
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            8,
+            0,
+            0
+        ],
+        [
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            9,
+            0
+        ],
+        [
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            0,
+            6
+        ]
+    ],
+    "labels": [
+        "eis",
+        "zwoi",
+        "dr\u00fc",
+        "vier",
+        "foif",
+        "s\u00e4chs",
+        "plus",
+        "minus",
+        "noise"
+    ],
+    "thresholds": {
+        "margin_0": {
+            "retention_pct": 100.0,
+            "accuracy_pct": 85.56
+        },
+        "margin_1": {
+            "retention_pct": 91.11,
+            "accuracy_pct": 91.46
+        },
+        "margin_2": {
+            "retention_pct": 65.56,
+            "accuracy_pct": 98.31
+        },
+        "margin_3": {
+            "retention_pct": 38.89,
+            "accuracy_pct": 100.0
+        },
+        "margin_4": {
+            "retention_pct": 22.22,
+            "accuracy_pct": 100.0
+        },
+        "margin_5": {
+            "retention_pct": 13.33,
+            "accuracy_pct": 100.0
+        },
+        "margin_6": {
+            "retention_pct": 6.67,
+            "accuracy_pct": 100.0
+        }
+    }
+}

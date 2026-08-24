@@ -4,7 +4,8 @@ import sounddevice as sd
 from scipy.io.wavfile import write
 
 # 8 target words + 1 negative rejection class
-words = ["eis", "zwoi", "drü", "vier", "foif", "sächs", "plus", "minus", "noise"]
+#words = ["eis", "zwoi", "drü", "vier", "foif", "sächs", "plus", "minus", "noise"]
+words = ["zwoi", "foif", "plus", "minus", "noise"]   #select datasize improving
 samples_per_word = 50
 sample_rate = 16000
 duration = 1.0  # 1.0 second per window
@@ -35,7 +36,7 @@ for word in words:
         sd.wait()
         print("Done.")
         
-        file_path = os.path.join(word_dir, f"{word}_{i+1}.wav")
+        file_path = os.path.join(word_dir, f"{word}_{i+51}.wav")    #offset must be the current data count + 1
         write(file_path, sample_rate, recording)
 
 print("\nFinished. Dataset saved in './custom_audio/'.")

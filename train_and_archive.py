@@ -28,15 +28,22 @@ CONFIG = {
     "num_hidden": 40,
     "num_outputs": 9,
     "beta": 0.88,
-    "epochs": 250,
+    "epochs": 500,
     "batch_size": 32,
     "lr": 8e-4,
     "train_multiplier": 10,
-    "test_holdout_count": 15,
+    "test_split_pct": 0.20,       # Reserve 20% of each folder for testing
     "target_spikes": 40.0,
     "lambda_reg": 0.05,
     "lambda_confusion": 0.10    # Weight for pairwise foif/zwoi separation penalty
 }
+
+# ==========================================
+# 1.5 RESUME SETTINGS
+# ==========================================
+RESUME_DIR = "experiments/20260824_193713_confusion_penalty_foif_zwoi"
+START_EPOCH = 500
+CONFIG["epochs"] = 1000  # Set this to your new final target
 
 LABELS = ["eis", "zwoi", "drü", "vier", "foif", "sächs", "plus", "minus", "noise"]
 LABEL_TO_IDX = {lbl: i for i, lbl in enumerate(LABELS)}
@@ -50,7 +57,6 @@ class HighResVoiceDataset(Dataset):
         self.cfg = cfg
         self.multiplier = cfg["train_multiplier"] if split == "train" else 1
         self.files = []
-        holdout = cfg["test_holdout_count"]
 
         for label in LABELS:
             folder = os.path.join(data_dir, label)
@@ -58,8 +64,7 @@ class HighResVoiceDataset(Dataset):
                 continue
             wavs = sorted([f for f in os.listdir(folder) if f.endswith(".wav")])
             
-            if len(wavs) <= holdout:
-                raise ValueError(f"Class '{label}' only has {len(wavs)} files. Need > {holdout}.")
+            holdout = max(1, int(len(wavs) * cfg["test_split_pct"]))
 
             if split == "train":
                 selected = wavs[:-holdout]
@@ -252,7 +257,7 @@ def main():
 
     threshold_results = {}
     total_samples = len(confidence_data)
-    margin_steps = [0, 2, 5, 10, 15, 20, 25, 30]
+    margin_steps = [0, 1, 2, 3, 4, 5, 10, 15, 20]
 
     print("\n--- Spike Margin Threshold Report ---")
     print(f"{'Required Margin':<18} | {'Retention (Not Rejected)':<25} | {'Accuracy on Retained':<20}")
@@ -271,6 +276,18 @@ def main():
             "retention_pct": round(retention_rate, 2),
             "accuracy_pct": round(acc_retained, 2)
         }
+
+    # Convert Confusion Matrix to Percentages (Row-normalized)
+    confusion_pct = []
+    for i in range(9):
+        row_sum = confusion[i].sum().item()
+        if row_sum > 0:
+            row_pct = [(val / row_sum) * 100.0 for val in confusion[i].tolist()]
+        else:
+            row_pct = [0.0] * 9
+            
+        # Round to 2 decimal places for clean JSON readability
+        confusion_pct.append([round(val, 2) for val in row_pct])
 
     model_save_path = os.path.join(exp_dir, "model.pth")
     torch.save(model.state_dict(), model_save_path)

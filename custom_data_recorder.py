@@ -5,8 +5,9 @@ from scipy.io.wavfile import write
 
 # --- Configuration ---
 # The 8 Swiss German target words + 1 noise class
-words = ["eis", "zwoi", "drü", "vier", "foif", "sächs", "plus", "minus", "noise"]
-samples_per_word = 25  # Change this to how many new samples you want to record right now
+custom_set = True
+words = ["zwoi", "foif", "noise"] if custom_set else ["eis", "zwoi", "drü", "vier", "foif", "sächs", "plus", "minus", "noise"]
+samples_per_word = 50  # Change this to how many new samples you want to record right now
 sample_rate = 16000
 duration = 1.0  # 1.0 second per window
 base_dir = "./custom_audio"

@@ -3,19 +3,19 @@ import time
 import sounddevice as sd
 from scipy.io.wavfile import write
 
-# 8 target words + 1 negative rejection class
-#words = ["eis", "zwoi", "drü", "vier", "foif", "sächs", "plus", "minus", "noise"]
-words = ["zwoi", "foif", "plus", "minus", "noise"]   #select datasize improving
-samples_per_word = 50
+# --- Configuration ---
+# The 8 Swiss German target words + 1 noise class
+words = ["eis", "zwoi", "drü", "vier", "foif", "sächs", "plus", "minus", "noise"]
+samples_per_word = 25  # Change this to how many new samples you want to record right now
 sample_rate = 16000
 duration = 1.0  # 1.0 second per window
-
 base_dir = "./custom_audio"
+
 os.makedirs(base_dir, exist_ok=True)
 
-print("=== SNN Voice Data Collector (v2 - with Rejection Class) ===")
-print(f"Target: {samples_per_word} samples per class across {len(words)} classes.")
-print("When recording 'unknown', include random words ('hello', 'test'), room noise, or coughs.")
+print("=== SNN Voice Data Collector (Auto-Resume) ===")
+print(f"Target: {samples_per_word} new samples per class.")
+print("When recording 'noise', include random chatter, TV sounds, typing, or silence.")
 time.sleep(2)
 
 for word in words:
@@ -24,19 +24,36 @@ for word in words:
     
     print(f"\n==========================================")
     print(f"   RECORDING CLASS: '{word.upper()}'")
+    
+    # 1. Dynamically calculate the offset to prevent overwriting
+    existing_files = [f for f in os.listdir(word_dir) if f.startswith(f"{word}_") and f.endswith(".wav")]
+    offset = 0
+    for f in existing_files:
+        try:
+            # Extract the number from "word_12.wav"
+            idx_str = f.replace(f"{word}_", "").replace(".wav", "")
+            idx = int(idx_str)
+            if idx > offset:
+                offset = idx
+        except ValueError:
+            pass # Ignore malformed filenames
+            
+    print(f"   Found {offset} existing files. Resuming at index {offset + 1}.")
     print(f"==========================================")
     print("Vary your tone, pacing, volume, and distance!")
     time.sleep(1.5)
     
+    # 2. Record new samples
     for i in range(samples_per_word):
-        input(f"[{i+1}/{samples_per_word}] Press ENTER, wait for 'RECORDING...', then speak '{word}'...")
-
+        current_idx = offset + i + 1
+        input(f"[{i+1}/{samples_per_word}] Press ENTER, wait for 'RECORDING...', then speak '{word}' (Saving as {current_idx})...")
+        
         print(">>> RECORDING...")
         recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='int16')
         sd.wait()
         print("Done.")
         
-        file_path = os.path.join(word_dir, f"{word}_{i+51}.wav")    #offset must be the current data count + 1
+        file_path = os.path.join(word_dir, f"{word}_{current_idx}.wav")
         write(file_path, sample_rate, recording)
 
-print("\nFinished. Dataset saved in './custom_audio/'.")
+print("\nFinished! All new audio safely appended to the './custom_audio/' directory.")

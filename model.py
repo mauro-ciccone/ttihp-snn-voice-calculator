@@ -3,17 +3,19 @@ import torch.nn as nn
 import snntorch as snn
 
 class SpikingNet(nn.Module):
-    def __init__(self, n_mels=16, num_hidden=256, num_outputs=9, beta=0.88):
+    def __init__(self, n_mels=16, num_hidden=128, num_outputs=9, beta=0.88):
         super().__init__()
-        # Flatten the 16 mel bands
         self.fc1 = nn.Linear(n_mels, num_hidden)
-        # We add learn_beta=True so PyTorch optimizes the leak rates for the hardware!
+        # Learnable beta with gradient tracking
         self.lif1 = snn.Leaky(beta=beta, learn_beta=True)
         self.fc2 = nn.Linear(num_hidden, num_outputs)
         self.lif2 = snn.Leaky(beta=beta)
 
     def forward(self, x):
-        # x shape: [batch, time, n_mels]
+        # Clamp beta to a safe physical window so it doesn't destabilize
+        with torch.no_grad():
+            self.lif1.beta.clamp_(0.60, 0.96)
+            
         mem1 = self.lif1.init_leaky()
         mem2 = self.lif2.init_leaky()
 

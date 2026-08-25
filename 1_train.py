@@ -10,11 +10,52 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0825_2016_dense_teacher_pdm"
-EPOCHS_TO_RUN = 13
+TARGET_FOLDER = "experiments/0825_2327_dense_MSE_loss_pdm"
+EPOCHS_TO_RUN = 3
 # -------------
 
-def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, epoch, idx_noise):
+def simulate_pdm_cochlea_batched(waveforms):
+    # waveforms: [Batch, 16000] on Device (MPS/GPU)
+    batch_size = waveforms.size(0)
+    target_timesteps = 500
+    bits_per_window = 2000 
+    total_pdm_bits = target_timesteps * bits_per_window 
+    
+    # 1. Upsample the whole batch at once
+    wave_3d = waveforms.view(batch_size, 1, -1)
+    wave_1m = torch.nn.functional.interpolate(
+        wave_3d, size=total_pdm_bits, mode='linear', align_corners=False
+    )
+    
+    wave_norm = (wave_1m + 1.0) / 2.0
+    pdm_bits = torch.bernoulli(wave_norm.clamp(0.0, 1.0))
+    hardware_in = (pdm_bits * 2.0) - 1.0 
+    
+    shifts = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], device=waveforms.device)
+    alphas = 1.0 - (1.0 / (2.0 ** shifts))
+    
+    time_axis = torch.arange(512, device=waveforms.device).view(1, 512)
+    a = alphas.view(8, 1)
+    
+    ir = (1.0 - a) * torch.pow(a, time_axis) 
+    ir = ir.view(8, 1, 512).flip(dims=[-1]) 
+    
+    # 2. Vectorized parallel hardware filtering
+    filtered_bands = torch.nn.functional.conv1d(
+        hardware_in, ir, padding=511
+    )[..., :total_pdm_bits] 
+    
+    ihc_rectified = torch.clamp(filtered_bands, min=0.0)
+    windowed_energy = ihc_rectified.view(batch_size, 8, target_timesteps, bits_per_window)
+    accumulated_potentials = windowed_energy.sum(dim=-1) 
+    
+    v_threshold = 0.35 
+    cochlea_spikes = (accumulated_potentials / bits_per_window > v_threshold).float()
+    
+    # Return shape: [Batch, Timesteps(500), Channels(8)]
+    return cochlea_spikes.transpose(1, 2)
+
+def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, criterion, epoch, idx_noise):
     model.eval()
     val_correct, val_total, val_loss_sum = 0, 0, 0.0
     all_preds, all_targets, all_spikes = [], [], []
@@ -22,31 +63,24 @@ def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_lo
     with torch.no_grad():
         for x, y in data_loader:
             x, y = x.to(device), y.to(device)
-            spk_out = model(x)
+            # 1. Run hardware sim instantly on the GPU
+            spikes_in = simulate_pdm_cochlea_batched(x)
+            
+            # 2. Feed spikes to the model
+            spk_out = model(spikes_in)
             spike_counts = spk_out.sum(dim=1)
             
-            # 1. Losses
-            # Replace lines 94-97 in your script with this:
-            is_noise = (y == idx_noise)
-            valid_ce_mask = ~is_noise
-            
-            # A. Base CrossEntropy (Only for valid keywords)
-            if valid_ce_mask.any():
-                ce_loss = ce_loss_fn(spike_counts[valid_ce_mask], y[valid_ce_mask])
-            else:
-                ce_loss = torch.tensor(0.0, device=device)
-
-            # B. Target Spike Activity Regularization
+            # 1. Silence-as-Rejection Target Matrix
             target_counts = torch.zeros_like(spike_counts)
+            for b in range(len(y)):
+                label = y[b].item()
+                if label != idx_noise: 
+                    # Drive the specific keyword neuron to target spikes
+                    target_counts[b, label] = config["target_spikes"]
+                # If noise, target_counts remains entirely zeros
             
-            # Keywords target 100 spikes, Noise targets 0 spikes
-            if valid_ce_mask.any():
-                target_counts[valid_ce_mask] = target_counts[valid_ce_mask].scatter(
-                    1, y[valid_ce_mask].unsqueeze(1), config["target_spikes"]
-                )
-            
-            # This aggressively forces the output to 0.0 during noise
-            reg_loss = nn.functional.mse_loss(spike_counts, target_counts)
+            # Pure MSE Loss (replaces both CE and reg_loss)
+            mse_loss = criterion(spike_counts, target_counts)
             
             spikes_zwoi = spike_counts[:, idx_zwoi]
             spikes_foif = spike_counts[:, idx_foif]
@@ -54,18 +88,20 @@ def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_lo
             is_zwoi = (y == idx_zwoi).float()
             conf_loss = torch.mean((spikes_zwoi * is_foif)**2 + (spikes_foif * is_zwoi)**2)
             
-            # Inside run_evaluation():
             l1_loss = torch.norm(model.fc_in.weight, p=1) + \
                       torch.norm(model.fc_rec.weight, p=1) + \
                       torch.norm(model.fc_out.weight, p=1)
             
             current_lambda_l1 = config["lambda_l1"] if epoch >= 50 else 0.0
-            current_lambda_reg = config["lambda_reg"] if epoch >= 30 else 0.0
             
-            loss = ce_loss + (current_lambda_reg * reg_loss) + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
+            # Total Loss
+            loss = mse_loss + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
             val_loss_sum += loss.item()
 
-            preds = spike_counts.argmax(dim=1)
+            # Dynamic Hardware Inference: If max spikes < 15, classify as noise
+            max_spikes, raw_preds = spike_counts.max(dim=1)
+            preds = torch.where(max_spikes < 15, torch.tensor(idx_noise, device=device), raw_preds)
+            
             val_correct += (preds == y).sum().item()
             val_total += y.size(0)
 
@@ -80,7 +116,7 @@ def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_lo
 
 
 def main():
-    device = torch.device("cpu")
+    device = torch.device("mps")
     
     # 1. Load Ledger State
     ledger = load_ledger(TARGET_FOLDER)
@@ -121,7 +157,9 @@ def main():
     model.load_state_dict(torch.load(model_path, map_location=device))
     
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
-    ce_loss_fn = nn.CrossEntropyLoss()
+    
+    # Switch to MSE Loss for Silence-as-Rejection
+    criterion = nn.MSELoss()
 
     best_test_acc = 0.0
     best_model_state = None
@@ -135,32 +173,25 @@ def main():
         
         for x, y in pbar:
             x, y = x.to(device), y.to(device)
+            # 1. Run hardware sim instantly on the GPU
+            spikes_in = simulate_pdm_cochlea_batched(x)
+            
+            # 2. Clear the gradients
             optimizer.zero_grad()
             
-            spk_out = model(x)
+            # 3. Feed spikes to the model
+            spk_out = model(spikes_in)
             spike_counts = spk_out.sum(dim=1)
 
-            # Replace lines 94-97 in your script with this:
-            is_noise = (y == idx_noise)
-            valid_ce_mask = ~is_noise
-            
-            # A. Base CrossEntropy (Only for valid keywords)
-            if valid_ce_mask.any():
-                ce_loss = ce_loss_fn(spike_counts[valid_ce_mask], y[valid_ce_mask])
-            else:
-                ce_loss = torch.tensor(0.0, device=device)
-
-            # B. Target Spike Activity Regularization
+            # Silence-as-Rejection Target Matrix
             target_counts = torch.zeros_like(spike_counts)
+            for b in range(len(y)):
+                label = y[b].item()
+                if label != idx_noise: 
+                    target_counts[b, label] = config["target_spikes"]
             
-            # Keywords target 100 spikes, Noise targets 0 spikes
-            if valid_ce_mask.any():
-                target_counts[valid_ce_mask] = target_counts[valid_ce_mask].scatter(
-                    1, y[valid_ce_mask].unsqueeze(1), config["target_spikes"]
-                )
-            
-            # This aggressively forces the output to 0.0 during noise
-            reg_loss = nn.functional.mse_loss(spike_counts, target_counts)
+            # Pure MSE Loss
+            mse_loss = criterion(spike_counts, target_counts)
 
             spikes_zwoi = spike_counts[:, idx_zwoi]
             spikes_foif = spike_counts[:, idx_foif]
@@ -171,14 +202,18 @@ def main():
             l1_loss = torch.norm(model.fc_in.weight, p=1) + torch.norm(model.fc_rec.weight, p=1) + torch.norm(model.fc_out.weight, p=1)
 
             current_lambda_l1 = config["lambda_l1"] if epoch >= 50 else 0.0
-            current_lambda_reg = config["lambda_reg"] if epoch >= 30 else 0.0
 
-            loss = ce_loss + ( current_lambda_reg* reg_loss) + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
+            loss = mse_loss + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
             loss.backward()
             optimizer.step()
 
             total_train_loss += loss.item()
-            train_correct += (spike_counts.argmax(dim=1) == y).sum().item()
+            
+            # Dynamic Hardware Inference
+            max_spikes, raw_preds = spike_counts.max(dim=1)
+            preds = torch.where(max_spikes < 15, torch.tensor(idx_noise, device=device), raw_preds)
+            
+            train_correct += (preds == y).sum().item()
             train_total += y.size(0)
             pbar.set_postfix({"Loss": f"{loss.item():.2f}", "Acc": f"{(train_correct/train_total)*100:.1f}%"})
 
@@ -187,7 +222,7 @@ def main():
 
         # Periodic Evaluation
         avg_test_loss, test_acc, _, _, _ = run_evaluation(
-            model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, epoch, idx_noise
+            model, test_loader, device, config, idx_zwoi, idx_foif, criterion, epoch, idx_noise
         )
 
         epoch_history.append({
@@ -210,7 +245,7 @@ def main():
         model.load_state_dict(best_model_state)
     
     _, final_test_acc, preds, targets, spike_counts = run_evaluation(
-        model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, EPOCHS_TO_RUN, idx_noise
+        model, test_loader, device, config, idx_zwoi, idx_foif, criterion, EPOCHS_TO_RUN, idx_noise
     )
 
     # Confusion Matrix (Raw & Percentage)

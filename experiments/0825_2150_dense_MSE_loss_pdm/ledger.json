@@ -1,5 +1,5 @@
 {
-    "experiment_name": "dense_teacher_pdm",
+    "experiment_name": "dense_MSE_loss_pdm",
     "base_config": {
         "sample_rate": 16000,
         "n_mels": 8,
@@ -20,7 +20,7 @@
     "commits": [
         {
             "commit_id": "00",
-            "timestamp": "0825_2016",
+            "timestamp": "0825_2150",
             "action": "init",
             "model_file": "model_00_init.pth",
             "metrics": {

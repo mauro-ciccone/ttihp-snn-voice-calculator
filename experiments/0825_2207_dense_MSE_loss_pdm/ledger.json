@@ -1,0 +1,31 @@
+{
+    "experiment_name": "dense_MSE_loss_pdm",
+    "base_config": {
+        "sample_rate": 16000,
+        "n_mels": 8,
+        "n_fft": 512,
+        "hop_length": 128,
+        "num_hidden": 128,
+        "num_outputs": 8,
+        "batch_size": 256,
+        "train_multiplier": 10,
+        "test_split_pct": 0.2,
+        "beta": 0.88,
+        "lr": 0.001,
+        "lambda_confusion": 0.1,
+        "target_spikes": 128,
+        "lambda_reg": 0.001,
+        "lambda_l1": 0.001
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0825_2207",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "sparsity_pct": 0.0
+            }
+        }
+    ]
+}

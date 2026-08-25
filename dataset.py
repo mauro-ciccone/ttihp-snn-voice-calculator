@@ -4,6 +4,8 @@ import torch
 import torchaudio
 import torchaudio.transforms as T
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import WeightedRandomSampler
+import numpy as np
 
 class PDMCochleaDataset(Dataset):
     def __init__(self, file_list, labels_map, is_train=True, train_multiplier=10):
@@ -30,40 +32,6 @@ class PDMCochleaDataset(Dataset):
         waveform = waveform + noise
         
         return waveform
-
-    def _simulate_pdm_cochlea(self, waveform):
-        wave_1m = torch.nn.functional.interpolate(
-            waveform.unsqueeze(0), size=1000000, mode='linear', align_corners=False
-        ).squeeze()
-        
-        wave_norm = (wave_1m + 1.0) / 2.0  
-        pdm_bits = torch.bernoulli(wave_norm.clamp(0.0, 1.0))
-        
-        timesteps = 500
-        pdm_chunks = pdm_bits.view(timesteps, 2000)
-        
-        # Up/Down counter per chunk: PDM 1 adds +1, PDM 0 subtracts -1 (removes DC bias)
-        chunk_energy = (pdm_chunks.sum(dim=1) - 1000.0).clamp(min=0.0)
-        
-        cochlea_spikes = torch.zeros((timesteps, 8))
-        membrane = torch.zeros(8)
-        
-        # 8 distinct hardware leak rates and thresholds for frequency bands
-        decays = torch.tensor([0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99])
-        thresholds = torch.tensor([50.0, 100.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0])
-        
-        for t in range(timesteps):
-            # Accumulate energy into membrane with individual channel leaks
-            membrane = (membrane * decays) + chunk_energy[t]
-            
-            # Fire condition
-            fired = membrane >= thresholds
-            cochlea_spikes[t, fired] = 1.0
-            
-            # HARD RESET: Subtract threshold (or reset to 0) upon firing
-            membrane[fired] -= thresholds[fired] 
-            
-        return cochlea_spikes
 
     def __len__(self):
         return len(self.file_list) * self.train_multiplier
@@ -94,11 +62,7 @@ class PDMCochleaDataset(Dataset):
         if self.is_train:
             waveform = self._augment(waveform)
 
-        # Run the hardware simulation
-        # Returns a tensor of shape [1000, 8] containing pure 1s and 0s
-        cochlea_spikes = self._simulate_pdm_cochlea(waveform)
-
-        return cochlea_spikes, label
+        return waveform.squeeze(0), label
 
 
 def get_dataloaders(config, data_dir="data", test_split_pct=0.2):
@@ -136,8 +100,37 @@ def get_dataloaders(config, data_dir="data", test_split_pct=0.2):
 
     batch_size = config.get("batch_size", 32)
     
-    # Num_workers=4 will utilize your M4 cores to generate the PDM streams in parallel
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+    # 1. Calculate inverse weights for balanced sampling based on actual file counts
+    train_labels = [labels_map[lbl] for _, lbl in train_files]
+    class_counts = np.bincount(train_labels, minlength=len(labels_map))
+    class_weights = 1.0 / np.maximum(class_counts, 1) # Prevent divide-by-zero
+    
+    # 2. Assign the appropriate weight to every file in the training list
+    sample_weights = [class_weights[y] for y in train_labels]
+    
+    # 3. Create the sampler
+    # We multiply by train_multiplier here so the epoch length remains the same as before
+    total_epoch_samples = len(train_files) * config.get("train_multiplier", 10)
+    sampler = WeightedRandomSampler(
+        weights=sample_weights, 
+        num_samples=total_epoch_samples, 
+        replacement=True
+    )
+
+    # 4. Plug the sampler into the train_loader (shuffle=True MUST be removed)
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=batch_size, 
+        sampler=sampler, 
+        num_workers=4
+    )
+    
+    test_loader = DataLoader(
+        test_dataset, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=4
+    )
+    
 
     return train_loader, test_loader, labels_map

@@ -1,0 +1,408 @@
+{
+    "experiment_name": "dense_MSE_loss_pdm",
+    "base_config": {
+        "sample_rate": 16000,
+        "n_mels": 8,
+        "n_fft": 512,
+        "hop_length": 128,
+        "num_hidden": 128,
+        "num_outputs": 8,
+        "batch_size": 128,
+        "train_multiplier": 10,
+        "test_split_pct": 0.2,
+        "beta": 0.88,
+        "lr": 0.001,
+        "lambda_confusion": 0.1,
+        "target_spikes": 128,
+        "lambda_reg": 0.001,
+        "lambda_l1": 0.001
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0825_2213",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "sparsity_pct": 0.0
+            }
+        },
+        {
+            "commit_id": "01",
+            "timestamp": "0825_2320",
+            "action": "train",
+            "model_file": "model_01_train.pth",
+            "metrics": {
+                "best_test_acc": 7.46,
+                "confusion_matrix_raw": [
+                    [
+                        0,
+                        30,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        30,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        30,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        30,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        30,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        30,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        30,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        30,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0,
+                        409,
+                        0,
+                        1,
+                        0,
+                        0,
+                        0,
+                        0,
+                        20
+                    ]
+                ],
+                "confusion_matrix_pct": [
+                    [
+                        0.0,
+                        100.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        0.0,
+                        100.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        0.0,
+                        100.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        0.0,
+                        100.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        0.0,
+                        100.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        0.0,
+                        100.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        0.0,
+                        100.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        0.0,
+                        100.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    [
+                        0.0,
+                        95.1,
+                        0.0,
+                        0.2,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        4.7
+                    ]
+                ],
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained_count": 670,
+                        "retention_pct": 100.0,
+                        "accuracy_pct": 7.46
+                    },
+                    "margin_1": {
+                        "retained_count": 650,
+                        "retention_pct": 97.01,
+                        "accuracy_pct": 6.31
+                    },
+                    "margin_2": {
+                        "retained_count": 26,
+                        "retention_pct": 3.88,
+                        "accuracy_pct": 11.54
+                    },
+                    "margin_3": {
+                        "retained_count": 8,
+                        "retention_pct": 1.19,
+                        "accuracy_pct": 0.0
+                    },
+                    "margin_4": {
+                        "retained_count": 2,
+                        "retention_pct": 0.3,
+                        "accuracy_pct": 0.0
+                    },
+                    "margin_5": {
+                        "retained_count": 2,
+                        "retention_pct": 0.3,
+                        "accuracy_pct": 0.0
+                    },
+                    "margin_10": {
+                        "retained_count": 0,
+                        "retention_pct": 0.0,
+                        "accuracy_pct": 0.0
+                    },
+                    "margin_15": {
+                        "retained_count": 0,
+                        "retention_pct": 0.0,
+                        "accuracy_pct": 0.0
+                    },
+                    "margin_20": {
+                        "retained_count": 0,
+                        "retention_pct": 0.0,
+                        "accuracy_pct": 0.0
+                    }
+                }
+            },
+            "epochs_run": 15,
+            "labels": [
+                "dr\u00fc",
+                "eis",
+                "foif",
+                "minus",
+                "plus",
+                "s\u00e4chs",
+                "vier",
+                "zwoi",
+                "noise"
+            ],
+            "history": [
+                {
+                    "epoch": 1,
+                    "train_loss": 1649.153,
+                    "test_loss": 711.607,
+                    "train_acc": 11.13,
+                    "test_acc": 5.07
+                },
+                {
+                    "epoch": 2,
+                    "train_loss": 1627.1435,
+                    "test_loss": 685.8143,
+                    "train_acc": 11.57,
+                    "test_acc": 6.72
+                },
+                {
+                    "epoch": 3,
+                    "train_loss": 1630.4423,
+                    "test_loss": 710.4987,
+                    "train_acc": 11.22,
+                    "test_acc": 6.12
+                },
+                {
+                    "epoch": 4,
+                    "train_loss": 1631.1323,
+                    "test_loss": 696.747,
+                    "train_acc": 11.63,
+                    "test_acc": 6.87
+                },
+                {
+                    "epoch": 5,
+                    "train_loss": 1621.0737,
+                    "test_loss": 711.9542,
+                    "train_acc": 11.79,
+                    "test_acc": 6.12
+                },
+                {
+                    "epoch": 6,
+                    "train_loss": 1629.8363,
+                    "test_loss": 693.9047,
+                    "train_acc": 11.65,
+                    "test_acc": 6.42
+                },
+                {
+                    "epoch": 7,
+                    "train_loss": 1633.0338,
+                    "test_loss": 703.8667,
+                    "train_acc": 11.3,
+                    "test_acc": 6.42
+                },
+                {
+                    "epoch": 8,
+                    "train_loss": 1634.0633,
+                    "test_loss": 699.2969,
+                    "train_acc": 11.43,
+                    "test_acc": 6.27
+                },
+                {
+                    "epoch": 9,
+                    "train_loss": 1627.4532,
+                    "test_loss": 711.4735,
+                    "train_acc": 11.35,
+                    "test_acc": 6.27
+                },
+                {
+                    "epoch": 10,
+                    "train_loss": 1631.345,
+                    "test_loss": 699.5587,
+                    "train_acc": 11.78,
+                    "test_acc": 6.72
+                },
+                {
+                    "epoch": 11,
+                    "train_loss": 1647.2187,
+                    "test_loss": 695.0476,
+                    "train_acc": 11.39,
+                    "test_acc": 7.16
+                },
+                {
+                    "epoch": 12,
+                    "train_loss": 1624.9844,
+                    "test_loss": 692.8006,
+                    "train_acc": 11.79,
+                    "test_acc": 6.27
+                },
+                {
+                    "epoch": 13,
+                    "train_loss": 1625.1834,
+                    "test_loss": 699.2652,
+                    "train_acc": 11.65,
+                    "test_acc": 7.61
+                },
+                {
+                    "epoch": 14,
+                    "train_loss": 1626.5068,
+                    "test_loss": 699.9753,
+                    "train_acc": 11.71,
+                    "test_acc": 7.16
+                },
+                {
+                    "epoch": 15,
+                    "train_loss": 1626.0234,
+                    "test_loss": 693.8886,
+                    "train_acc": 11.84,
+                    "test_acc": 7.91
+                }
+            ]
+        }
+    ]
+}

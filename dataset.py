@@ -5,34 +5,62 @@ import torchaudio
 import torchaudio.transforms as T
 from torch.utils.data import Dataset, DataLoader
 
-class SwissGermanVoiceDataset(Dataset):
-    def __init__(self, file_list, labels_map, n_mels=16, n_fft=512, hop_length=128, is_train=True, train_multiplier=10):
+class PDMCochleaDataset(Dataset):
+    def __init__(self, file_list, labels_map, is_train=True, train_multiplier=10):
         self.file_list = file_list
         self.labels_map = labels_map
         self.is_train = is_train
         self.train_multiplier = train_multiplier if is_train else 1
         
-        self.mel_transform = T.MelSpectrogram(
-            sample_rate=16000,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            n_mels=n_mels
-        )
-
+        # We define 8 different decay rates (tau) for the Silicon Cochlea
+        # Fast leaks (high freq) to Slow leaks (low freq/envelope)
+        self.decays = torch.tensor([0.1, 0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.99])
+        
     def _augment(self, waveform):
-        # 1. Random time roll / shift
-        shift = random.randint(-1600, 1600) # +/- 100ms at 16kHz
+        # Time shift +/- 5%
+        shift = random.randint(-800, 800)
         waveform = torch.roll(waveform, shifts=shift, dims=-1)
         
-        # 2. Add subtle Gaussian noise
-        noise = torch.randn_like(waveform) * 0.005
-        waveform = waveform + noise
-        
-        # 3. Random amplitude scaling (volume jitter)
-        scale = random.uniform(0.8, 1.2)
+        # Volume jitter
+        scale = random.uniform(0.7, 1.3)
         waveform = waveform * scale
         
+        # Subtle Gaussian noise
+        noise = torch.randn_like(waveform) * 0.02
+        waveform = waveform + noise
+        
         return waveform
+
+    def _simulate_pdm_cochlea(self, waveform):
+        wave_1m = torch.nn.functional.interpolate(
+            waveform.unsqueeze(0), size=1000000, mode='linear', align_corners=False
+        ).squeeze()
+        
+        wave_norm = (wave_1m + 1.0) / 2.0  
+        pdm_bits = torch.bernoulli(wave_norm.clamp(0.0, 1.0))
+        
+        pdm_chunks = pdm_bits.view(250, 4000)
+        chunk_density = pdm_chunks.sum(dim=1, keepdim=True)
+        
+        # 1. Remove the DC Bias (Silence = 2000) to get true acoustic energy
+        energy = torch.abs(chunk_density - 2000.0)
+        
+        # 2. Scale thresholds by leak rate
+        # A 0.99 decay holds charge 100x longer than a 0.1 decay.
+        # We scale the thresholds physically so they all fire at healthy, sparse rates.
+        thresholds = 500.0 / (1.0 - self.decays)
+        
+        timesteps = 250
+        cochlea_spikes = torch.zeros((timesteps, 8))
+        membrane = torch.zeros(8)
+        
+        for t in range(timesteps):
+            membrane = (membrane * self.decays) + energy[t]
+            fired = membrane > thresholds
+            cochlea_spikes[t, fired] = 1.0
+            membrane[fired] = 0.0
+            
+        return cochlea_spikes
 
     def __len__(self):
         return len(self.file_list) * self.train_multiplier
@@ -63,22 +91,18 @@ class SwissGermanVoiceDataset(Dataset):
         if self.is_train:
             waveform = self._augment(waveform)
 
-        # Compute log-mel spectrogram: [1, n_mels, time] -> [time, n_mels]
-        mel = self.mel_transform(waveform)
-        log_mel = torch.log(mel + 1e-6).squeeze(0).transpose(0, 1)
+        # Run the hardware simulation
+        # Returns a tensor of shape [1000, 8] containing pure 1s and 0s
+        cochlea_spikes = self._simulate_pdm_cochlea(waveform)
 
-        # Normalize per sample
-        log_mel = (log_mel - log_mel.mean()) / (log_mel.std() + 1e-6)
-
-        return log_mel, label
+        return cochlea_spikes, label
 
 
-def get_dataloaders(config, data_dir="custom_audio", test_split_pct=0.2):
-    """
-    Scans data_dir for class subfolders (e.g. data/eis, data/zwoi, ...),
-    splits into train and untouched test sets, and returns PyTorch DataLoaders.
-    """
+def get_dataloaders(config, data_dir="data", test_split_pct=0.2):
     labels = sorted([d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d)) and not d.startswith(".")])
+    if "noise" in labels:
+        labels.remove("noise")
+        labels.append("noise")
     labels_map = {lbl: i for i, lbl in enumerate(labels)}
 
     train_files = []
@@ -93,28 +117,24 @@ def get_dataloaders(config, data_dir="custom_audio", test_split_pct=0.2):
         train_files.extend([(f, lbl) for f in files[:split_idx]])
         test_files.extend([(f, lbl) for f in files[split_idx:]])
 
-    train_dataset = SwissGermanVoiceDataset(
+    train_dataset = PDMCochleaDataset(
         file_list=train_files,
         labels_map=labels_map,
-        n_mels=config.get("n_mels", 16),
-        n_fft=config.get("n_fft", 512),
-        hop_length=config.get("hop_length", 128),
         is_train=True,
         train_multiplier=config.get("train_multiplier", 10)
     )
 
-    test_dataset = SwissGermanVoiceDataset(
+    test_dataset = PDMCochleaDataset(
         file_list=test_files,
         labels_map=labels_map,
-        n_mels=config.get("n_mels", 16),
-        n_fft=config.get("n_fft", 512),
-        hop_length=config.get("hop_length", 128),
         is_train=False,
         train_multiplier=1
     )
 
     batch_size = config.get("batch_size", 32)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    
+    # Num_workers=4 will utilize your M4 cores to generate the PDM streams in parallel
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
     return train_loader, test_loader, labels_map

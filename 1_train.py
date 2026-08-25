@@ -10,11 +10,11 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0825_1525_dense_teacher"
+TARGET_FOLDER = "experiments/0825_1726_dense_teacher_pdm"
 EPOCHS_TO_RUN = 50
 # -------------
 
-def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, epoch):
+def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, epoch, idx_noise):
     model.eval()
     val_correct, val_total, val_loss_sum = 0, 0, 0.0
     all_preds, all_targets, all_spikes = [], [], []
@@ -26,10 +26,26 @@ def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_lo
             spike_counts = spk_out.sum(dim=1)
             
             # 1. Losses
-            ce_loss = ce_loss_fn(spike_counts, y)
+            # Replace lines 94-97 in your script with this:
+            is_noise = (y == idx_noise)
+            valid_ce_mask = ~is_noise
             
+            # A. Base CrossEntropy (Only for valid keywords)
+            if valid_ce_mask.any():
+                ce_loss = ce_loss_fn(spike_counts[valid_ce_mask], y[valid_ce_mask])
+            else:
+                ce_loss = torch.tensor(0.0, device=device)
+
+            # B. Target Spike Activity Regularization
             target_counts = torch.zeros_like(spike_counts)
-            target_counts.scatter_(1, y.unsqueeze(1), config["target_spikes"])
+            
+            # Keywords target 100 spikes, Noise targets 0 spikes
+            if valid_ce_mask.any():
+                target_counts[valid_ce_mask] = target_counts[valid_ce_mask].scatter(
+                    1, y[valid_ce_mask].unsqueeze(1), config["target_spikes"]
+                )
+            
+            # This aggressively forces the output to 0.0 during noise
             reg_loss = nn.functional.mse_loss(spike_counts, target_counts)
             
             spikes_zwoi = spike_counts[:, idx_zwoi]
@@ -81,8 +97,15 @@ def main():
         test_split_pct=config.get("test_split_pct", 0.2)
     )
     inv_labels = {v: k for k, v in labels_map.items()}
+    idx_eis = labels_map.get("eis", 0)
     idx_zwoi = labels_map.get("zwoi", 1)
+    idx_drü = labels_map.get("drü", 2)
+    idx_vier = labels_map.get("vier", 3)
     idx_foif = labels_map.get("foif", 4)
+    idx_sächs = labels_map.get("sächs", 5)
+    idx_plus = labels_map.get("plus", 6)
+    idx_minus = labels_map.get("minus", 7)
+    idx_noise = labels_map.get("noise", 8)
     num_classes = len(labels_map)
 
     # 3. Model & Optimizer
@@ -116,9 +139,26 @@ def main():
             spk_out = model(x)
             spike_counts = spk_out.sum(dim=1)
 
-            ce_loss = ce_loss_fn(spike_counts, y)
+            # Replace lines 94-97 in your script with this:
+            is_noise = (y == idx_noise)
+            valid_ce_mask = ~is_noise
+            
+            # A. Base CrossEntropy (Only for valid keywords)
+            if valid_ce_mask.any():
+                ce_loss = ce_loss_fn(spike_counts[valid_ce_mask], y[valid_ce_mask])
+            else:
+                ce_loss = torch.tensor(0.0, device=device)
+
+            # B. Target Spike Activity Regularization
             target_counts = torch.zeros_like(spike_counts)
-            target_counts.scatter_(1, y.unsqueeze(1), config["target_spikes"])
+            
+            # Keywords target 100 spikes, Noise targets 0 spikes
+            if valid_ce_mask.any():
+                target_counts[valid_ce_mask] = target_counts[valid_ce_mask].scatter(
+                    1, y[valid_ce_mask].unsqueeze(1), config["target_spikes"]
+                )
+            
+            # This aggressively forces the output to 0.0 during noise
             reg_loss = nn.functional.mse_loss(spike_counts, target_counts)
 
             spikes_zwoi = spike_counts[:, idx_zwoi]
@@ -145,7 +185,7 @@ def main():
 
         # Periodic Evaluation
         avg_test_loss, test_acc, _, _, _ = run_evaluation(
-            model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, epoch
+            model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, epoch, idx_noise
         )
 
         epoch_history.append({
@@ -168,7 +208,7 @@ def main():
         model.load_state_dict(best_model_state)
     
     _, final_test_acc, preds, targets, spike_counts = run_evaluation(
-        model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, EPOCHS_TO_RUN
+        model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, EPOCHS_TO_RUN, idx_noise
     )
 
     # Confusion Matrix (Raw & Percentage)
@@ -180,6 +220,17 @@ def main():
     for row in cm:
         total_row = sum(row)
         cm_pct.append([round((val / total_row) * 100, 1) if total_row > 0 else 0.0 for val in row])
+
+    # --- NEW: PRINT CONFUSION MATRIX TO CONSOLE ---
+    print("\n--- Final Confusion Matrix (%) ---")
+    label_names = [inv_labels[i] for i in range(num_classes)]
+    header = f"{'Target / Pred':<13} | " + " | ".join([f"{lbl:>6}" for lbl in label_names])
+    print(header)
+    print("-" * len(header))
+    for i, row in enumerate(cm_pct):
+        row_str = " | ".join([f"{val:>6.1f}" for val in row])
+        print(f"{label_names[i]:<13} | {row_str}")
+    # ----------------------------------------------
 
     # Margin Threshold Analysis
     sorted_spikes, _ = torch.sort(spike_counts, dim=1, descending=True)

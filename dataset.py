@@ -39,26 +39,29 @@ class PDMCochleaDataset(Dataset):
         wave_norm = (wave_1m + 1.0) / 2.0  
         pdm_bits = torch.bernoulli(wave_norm.clamp(0.0, 1.0))
         
-        pdm_chunks = pdm_bits.view(250, 4000)
-        chunk_density = pdm_chunks.sum(dim=1, keepdim=True)
+        timesteps = 500
+        pdm_chunks = pdm_bits.view(timesteps, 2000)
         
-        # 1. Remove the DC Bias (Silence = 2000) to get true acoustic energy
-        energy = torch.abs(chunk_density - 2000.0)
+        # Up/Down counter per chunk: PDM 1 adds +1, PDM 0 subtracts -1 (removes DC bias)
+        chunk_energy = (pdm_chunks.sum(dim=1) - 1000.0).clamp(min=0.0)
         
-        # 2. Scale thresholds by leak rate
-        # A 0.99 decay holds charge 100x longer than a 0.1 decay.
-        # We scale the thresholds physically so they all fire at healthy, sparse rates.
-        thresholds = 500.0 / (1.0 - self.decays)
-        
-        timesteps = 250
         cochlea_spikes = torch.zeros((timesteps, 8))
         membrane = torch.zeros(8)
         
+        # 8 distinct hardware leak rates and thresholds for frequency bands
+        decays = torch.tensor([0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99])
+        thresholds = torch.tensor([50.0, 100.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0])
+        
         for t in range(timesteps):
-            membrane = (membrane * self.decays) + energy[t]
-            fired = membrane > thresholds
+            # Accumulate energy into membrane with individual channel leaks
+            membrane = (membrane * decays) + chunk_energy[t]
+            
+            # Fire condition
+            fired = membrane >= thresholds
             cochlea_spikes[t, fired] = 1.0
-            membrane[fired] = 0.0
+            
+            # HARD RESET: Subtract threshold (or reset to 0) upon firing
+            membrane[fired] -= thresholds[fired] 
             
         return cochlea_spikes
 

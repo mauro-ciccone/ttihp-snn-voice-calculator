@@ -10,8 +10,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0825_1726_dense_teacher_pdm"
-EPOCHS_TO_RUN = 50
+TARGET_FOLDER = "experiments/0825_2016_dense_teacher_pdm"
+EPOCHS_TO_RUN = 13
 # -------------
 
 def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, epoch, idx_noise):
@@ -60,8 +60,9 @@ def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_lo
                       torch.norm(model.fc_out.weight, p=1)
             
             current_lambda_l1 = config["lambda_l1"] if epoch >= 50 else 0.0
+            current_lambda_reg = config["lambda_reg"] if epoch >= 30 else 0.0
             
-            loss = ce_loss + (config["lambda_reg"] * reg_loss) + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
+            loss = ce_loss + (current_lambda_reg * reg_loss) + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
             val_loss_sum += loss.item()
 
             preds = spike_counts.argmax(dim=1)
@@ -170,8 +171,9 @@ def main():
             l1_loss = torch.norm(model.fc_in.weight, p=1) + torch.norm(model.fc_rec.weight, p=1) + torch.norm(model.fc_out.weight, p=1)
 
             current_lambda_l1 = config["lambda_l1"] if epoch >= 50 else 0.0
+            current_lambda_reg = config["lambda_reg"] if epoch >= 30 else 0.0
 
-            loss = ce_loss + (config["lambda_reg"] * reg_loss) + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
+            loss = ce_loss + ( current_lambda_reg* reg_loss) + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
             loss.backward()
             optimizer.step()
 

@@ -12,6 +12,6 @@ test/__pycache__/
 test/results.xml
 test/gate_level_netlist.v
 .venv/
-data/
+google_audio/
 custom_audio/
 

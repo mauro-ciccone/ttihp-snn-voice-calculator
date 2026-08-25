@@ -10,11 +10,11 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0825_1455_dense_teacher"
+TARGET_FOLDER = "experiments/0825_1525_dense_teacher"
 EPOCHS_TO_RUN = 50
 # -------------
 
-def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn):
+def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, epoch):
     model.eval()
     val_correct, val_total, val_loss_sum = 0, 0, 0.0
     all_preds, all_targets, all_spikes = [], [], []
@@ -38,9 +38,14 @@ def run_evaluation(model, data_loader, device, config, idx_zwoi, idx_foif, ce_lo
             is_zwoi = (y == idx_zwoi).float()
             conf_loss = torch.mean((spikes_zwoi * is_foif)**2 + (spikes_foif * is_zwoi)**2)
             
-            l1_loss = torch.norm(model.fc1.weight, p=1) + torch.norm(model.fc2.weight, p=1)
+            # Inside run_evaluation():
+            l1_loss = torch.norm(model.fc_in.weight, p=1) + \
+                      torch.norm(model.fc_rec.weight, p=1) + \
+                      torch.norm(model.fc_out.weight, p=1)
             
-            loss = ce_loss + (config["lambda_reg"] * reg_loss) + (config["lambda_confusion"] * conf_loss) + (config["lambda_l1"] * l1_loss)
+            current_lambda_l1 = config["lambda_l1"] if epoch >= 50 else 0.0
+            
+            loss = ce_loss + (config["lambda_reg"] * reg_loss) + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
             val_loss_sum += loss.item()
 
             preds = spike_counts.argmax(dim=1)
@@ -122,9 +127,11 @@ def main():
             is_zwoi = (y == idx_zwoi).float()
             conf_loss = torch.mean((spikes_zwoi * is_foif)**2 + (spikes_foif * is_zwoi)**2)
 
-            l1_loss = torch.norm(model.fc1.weight, p=1) + torch.norm(model.fc2.weight, p=1)
+            l1_loss = torch.norm(model.fc_in.weight, p=1) + torch.norm(model.fc_rec.weight, p=1) + torch.norm(model.fc_out.weight, p=1)
 
-            loss = ce_loss + (config["lambda_reg"] * reg_loss) + (config["lambda_confusion"] * conf_loss) + (config["lambda_l1"] * l1_loss)
+            current_lambda_l1 = config["lambda_l1"] if epoch >= 50 else 0.0
+
+            loss = ce_loss + (config["lambda_reg"] * reg_loss) + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
             loss.backward()
             optimizer.step()
 
@@ -138,7 +145,7 @@ def main():
 
         # Periodic Evaluation
         avg_test_loss, test_acc, _, _, _ = run_evaluation(
-            model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn
+            model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, epoch
         )
 
         epoch_history.append({
@@ -161,7 +168,7 @@ def main():
         model.load_state_dict(best_model_state)
     
     _, final_test_acc, preds, targets, spike_counts = run_evaluation(
-        model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn
+        model, test_loader, device, config, idx_zwoi, idx_foif, ce_loss_fn, EPOCHS_TO_RUN
     )
 
     # Confusion Matrix (Raw & Percentage)

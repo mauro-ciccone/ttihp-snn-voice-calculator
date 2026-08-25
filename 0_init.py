@@ -11,7 +11,7 @@ BASE_CONFIG = {
     "n_mels": 16,
     "n_fft": 512,
     "hop_length": 128,
-    "num_hidden": 128,      # The massive starting search space
+    "num_hidden": 96,
     "num_outputs": 9,
     "batch_size": 32,
     "train_multiplier": 10,

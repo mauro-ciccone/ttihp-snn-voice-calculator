@@ -5,22 +5,22 @@ from model import SpikingNet
 from utils_ledger import create_ledger, append_commit
 
 # --- INITIALIZATION CONFIG ---
-EXP_NAME = "dense_teacher"
+EXP_NAME = "dense_teacher_pdm"
 BASE_CONFIG = {
     "sample_rate": 16000,
-    "n_mels": 16,
+    "n_mels": 8,
     "n_fft": 512,
     "hop_length": 128,
-    "num_hidden": 96,
-    "num_outputs": 9,
+    "num_hidden": 128,
+    "num_outputs": 8,
     "batch_size": 32,
     "train_multiplier": 10,
     "test_split_pct": 0.2,
     "beta": 0.88,
-    "lr": 0.0008,
+    "lr": 0.001,
     "lambda_confusion": 0.1,
-    "target_spikes": 40.0,
-    "lambda_reg": 0.05,
+    "target_spikes": 128,
+    "lambda_reg": 0.001,
     "lambda_l1": 0.001      # The new penalty to force sparsity during training
 }
 # -----------------------------

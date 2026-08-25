@@ -1,0 +1,27 @@
+{
+    "experiment_name": "dense_teacher_pipeline",
+    "base_config": {
+        "sample_rate": 16000,
+        "n_mels": 16,
+        "n_fft": 512,
+        "hop_length": 128,
+        "num_hidden": 256,
+        "num_outputs": 9,
+        "beta": 0.88,
+        "lr": 0.0008,
+        "target_spikes": 40.0,
+        "lambda_reg": 0.05,
+        "lambda_l1": 0.001
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0825_1422",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "sparsity_pct": 0.0
+            }
+        }
+    ]
+}

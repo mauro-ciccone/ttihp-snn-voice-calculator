@@ -5,30 +5,25 @@ from model import FastSpikingNet
 from utils_ledger import create_ledger, append_commit
 
 # --- INITIALIZATION CONFIG ---
-EXP_NAME = "dense_MSE_loss_pdm"
+EXP_NAME = "full_diagnostics"
 BASE_CONFIG = {
-    "sample_rate": 16000,
-    "n_mels": 8,
-    "n_fft": 512,
-    "hop_length": 128,
-    "num_hidden": 128,
-    "num_outputs": 8,
+    "num_inputs": 8,           # 8 hardware LIF channels (formerly n_mels)
+    "num_hidden": 128,         # Hidden recurrent neurons
+    "num_outputs": 8,          # 8 keyword classes
     "batch_size": 128,
-    "train_multiplier": 10,
-    "test_split_pct": 0.2,
-    "beta": 0.88,
-    "lr": 0.001,
-    "lambda_confusion": 0.1,
-    "target_spikes": 50,
-    "lambda_reg": 0.001,
-    "lambda_l1": 0.001      # The new penalty to force sparsity during training
+    "beta": 0.88,              # Hidden layer leak rate
+    "lr": 0.005,               # Hotter start to break the initial deadzone
+    "target_spikes": 50,       # Target threshold for keyword firing
+    "cross_talk_scale": 0.1,   # Penalty weight for silencing wrong neurons
+    "snn_clock_hz": 1000       # Documenting the speed of our hidden layer
 }
 # -----------------------------
 
 def main():
-    device = torch.device("mps") # Change between "mps" or "cpu" if needed
+    # Set mps or cpu
+    device = torch.device("cpu")
     
-    # 1. Create the experiment folder (e.g., experiments/0825_1430_dense_teacher_pipeline)
+    # 1. Create the experiment folder
     timestamp = datetime.datetime.now().strftime("%m%d_%H%M")
     folder_name = f"{timestamp}_{EXP_NAME}"
     folder_path = os.path.join("experiments", folder_name)
@@ -38,9 +33,9 @@ def main():
     # 2. Build the JSON Ledger
     create_ledger(folder_path, EXP_NAME, BASE_CONFIG)
     
-    # 3. Instantiate the massive 256-neuron network
+    # 3. Instantiate the pure Recurrent SNN
     model = FastSpikingNet(
-        num_inputs=BASE_CONFIG["n_mels"],
+        num_inputs=BASE_CONFIG["num_inputs"],
         num_hidden=BASE_CONFIG["num_hidden"],
         num_outputs=BASE_CONFIG["num_outputs"],
         beta=BASE_CONFIG["beta"]
@@ -55,7 +50,7 @@ def main():
         folder_path=folder_path,
         action="init",
         model_filename=model_filename,
-        metrics={"sparsity_pct": 0.0}
+        metrics={"status": "initialized_fast_snn"}
     )
     
     print(f"Success! Created {folder_path}")

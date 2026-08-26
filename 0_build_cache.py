@@ -3,78 +3,100 @@ import torch
 import torchaudio
 import random
 from tqdm import tqdm
+import warnings
+
+# Suppress the torchaudio backend warning for clean console output
+warnings.filterwarnings("ignore", category=UserWarning)
 
 # --- SILICON HARDWARE CONFIG ---
-MIC_MHZ = 1000000        # 1 MHz PDM Microphone
-SNN_CLOCK_HZ = 1000      # Running the main SNN at 1 kHz (1000 ticks) saves massive GPU memory for BPTT while preserving speech frequencies.
+MIC_MHZ = 1000000        
+SNN_CLOCK_HZ = 1000      
 WINDOW_TICKS = MIC_MHZ // SNN_CLOCK_HZ
 
 # Hardware Channel Tuning (High freq -> Low freq)
-# Fast leaks get low thresholds, slow leaks get high thresholds
 BETAS = torch.tensor([0.75, 0.80, 0.85, 0.90, 0.95, 0.97, 0.98, 0.99])
-THRESHOLDS = torch.tensor([15.0, 20.0, 30.0, 45.0, 60.0, 75.0, 85.0, 95.0])
-TRAIN_MULTIPLIER = 10  # Your 10x dataset expansion
+
+# Tuned to ~65% of the raw, unnormalized PDM voltage ceilings
+THRESHOLDS = torch.tensor([3.95, 4.85, 6.20, 7.5, 9.0, 12.5, 16.0, 23.0])
+TRAIN_MULTIPLIER = 10  
+
+def diagnostic_cochlea(waveform, device):
+    # NO NORMALIZATION. Raw audio only.
+    wave_1m = torch.nn.functional.interpolate(waveform.view(1, 1, -1), size=MIC_MHZ, mode='linear', align_corners=False).squeeze()
+    wave_norm = (wave_1m + 1.0) / 2.0
+    pdm_bits = torch.bernoulli(wave_norm.clamp(0.0, 1.0)).to(device)
+    pdm_bipolar = (pdm_bits * 2.0) - 1.0 
+    
+    pdm_windows = pdm_bipolar.view(SNN_CLOCK_HZ, WINDOW_TICKS).unsqueeze(-1)
+    
+    betas = BETAS.to(device).view(1, 8)
+    mem = torch.zeros(SNN_CLOCK_HZ, 8, device=device)
+    
+    max_voltages = torch.zeros(8, device=device)
+    
+    for t in range(WINDOW_TICKS):
+        mem = (mem * betas) + pdm_windows[:, t, :]
+        # Track the highest voltage ever reached by each channel across the whole file
+        current_max, _ = mem.max(dim=0)
+        max_voltages = torch.maximum(max_voltages, current_max)
+        
+    print(f"Max achieved voltages per channel: {max_voltages}")
+    return max_voltages
 
 def _augment(waveform):
-    # Your exact original analog augmentation logic
     shift = random.randint(-800, 800)
     waveform = torch.roll(waveform, shifts=shift, dims=-1)
-    
     scale = random.uniform(0.7, 1.3)
     waveform = waveform * scale
-    
     noise = torch.randn_like(waveform) * 0.02
     waveform = waveform + noise
     return waveform
 
 def simulate_silicon_cochlea(waveform, device):
-    """Perfectly emulates the digital logic of the 8 time-multiplexed LIF neurons and SR Latches."""
+    """Perfectly emulates the hardware using extreme PyTorch vectorization."""
     # 1. Digital PDM Generation (1 MHz)
     wave_1m = torch.nn.functional.interpolate(waveform.view(1, 1, -1), size=MIC_MHZ, mode='linear', align_corners=False).squeeze()
     wave_norm = (wave_1m + 1.0) / 2.0
     pdm_bits = torch.bernoulli(wave_norm.clamp(0.0, 1.0)).to(device)
     
-    # Bipolar integration: +1 for 1, -1 for 0 (prevents DC silence drift)
+    # Bipolar integration: +1 for 1, -1 for 0
     pdm_bipolar = (pdm_bits * 2.0) - 1.0 
     
     # 2. Reshape into SNN Clock Windows
-    # Shape: [1000 SNN ticks, 1000 PDM ticks per window]
-    pdm_windows = pdm_bipolar.view(SNN_CLOCK_HZ, WINDOW_TICKS)
+    # Shape: [1000 windows, 1000 ticks_per_window, 1] 
+    # We add a dummy channel dimension so it broadcasts across our 8 beta channels
+    pdm_windows = pdm_bipolar.view(SNN_CLOCK_HZ, WINDOW_TICKS).unsqueeze(-1)
     
-    betas = BETAS.to(device)
-    v_ths = THRESHOLDS.to(device)
-    mem = torch.zeros(8, device=device)
+    betas = BETAS.to(device).view(1, 8)
+    v_ths = THRESHOLDS.to(device).view(1, 8)
     
-    snn_input_spikes = torch.zeros(SNN_CLOCK_HZ, 8, dtype=torch.float32, device=device)
+    # mem shape: [1000 windows, 8 channels]
+    # By stacking the windows, we simulate all 1000 milliseconds simultaneously!
+    mem = torch.zeros(SNN_CLOCK_HZ, 8, device=device)
+    sticky_latches = torch.zeros(SNN_CLOCK_HZ, 8, dtype=torch.bool, device=device)
     
-    # 3. The Digital Hardware Loop
-    for w in range(SNN_CLOCK_HZ):
-        sticky_latches = torch.zeros(8, dtype=torch.bool, device=device)
+    # 3. The Vectorized Loop (Only runs 1,000 times instead of 1,000,000)
+    for t in range(WINDOW_TICKS):
+        # ALU: V = V * beta + PDM_In
+        mem = (mem * betas) + pdm_windows[:, t, :]
         
-        for t in range(WINDOW_TICKS):
-            # ALU: V = V * beta + PDM_In
-            mem = (mem * betas) + pdm_windows[w, t]
-            
-            # Comparator: Did it cross threshold?
-            fired = mem >= v_ths
-            mem[fired] = 0.0 # Reset
-            
-            # SR Latch: Set the sticky bit if ANY spike occurred in this window
-            sticky_latches = sticky_latches | fired
-            
-        # At the end of the window, pass the latches to the SNN and clear them
-        snn_input_spikes[w, :] = sticky_latches.float()
+        # Comparator
+        fired = mem >= v_ths
+        mem[fired] = 0.0 
         
-    return snn_input_spikes
+        # SR Latch
+        sticky_latches = sticky_latches | fired
+        
+    return sticky_latches.float()
 
 def main():
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cpu")
     raw_audio_dir = "custom_audio" 
     cache_dir = "data_cache"
     
     labels = [d for d in os.listdir(raw_audio_dir) if not d.startswith(".")]
     
-    print("=== Fabricating Augmented Silicon Cache ===")
+    print("=== Fabricating Vectorized Silicon Cache ===")
     for lbl in labels:
         in_dir = os.path.join(raw_audio_dir, lbl)
         out_dir = os.path.join(cache_dir, lbl)
@@ -89,14 +111,14 @@ def main():
                 waveform = torch.nn.functional.pad(waveform, (0, sr - waveform.shape[-1]))
             else:
                 waveform = waveform[:, :sr]
+
+            current_multiplier = 1 if lbl == "noise" else TRAIN_MULTIPLIER
                 
-            # Generate the 10x variations
             for i in range(TRAIN_MULTIPLIER):
                 pt_path = os.path.join(out_dir, f.replace(".wav", f"_aug{i}.pt"))
                 if os.path.exists(pt_path):
                     continue
                 
-                # The first one (i=0) is always the clean, untouched original (for testing)
                 if i == 0:
                     aug_wave = waveform
                 else:
@@ -107,3 +129,31 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    """wav_path = "custom_audio/eis/eis_5.wav"
+    waveform, sr = torchaudio.load(wav_path)
+    diagnostic_cochlea(waveform, "cpu")
+    wav_path = "custom_audio/zwoi/zwoi_5.wav"
+    waveform, sr = torchaudio.load(wav_path)
+    diagnostic_cochlea(waveform, "cpu")
+    wav_path = "custom_audio/drü/drü_5.wav"
+    waveform, sr = torchaudio.load(wav_path)
+    diagnostic_cochlea(waveform, "cpu")
+    wav_path = "custom_audio/vier/vier_5.wav"
+    waveform, sr = torchaudio.load(wav_path)
+    diagnostic_cochlea(waveform, "cpu")
+    wav_path = "custom_audio/foif/foif_5.wav"
+    waveform, sr = torchaudio.load(wav_path)
+    diagnostic_cochlea(waveform, "cpu")
+    wav_path = "custom_audio/sächs/sächs_5.wav"
+    waveform, sr = torchaudio.load(wav_path)
+    diagnostic_cochlea(waveform, "cpu")
+    wav_path = "custom_audio/plus/plus_5.wav"
+    waveform, sr = torchaudio.load(wav_path)
+    diagnostic_cochlea(waveform, "cpu")
+    wav_path = "custom_audio/minus/minus_5.wav"
+    waveform, sr = torchaudio.load(wav_path)
+    diagnostic_cochlea(waveform, "cpu")
+    wav_path = "custom_audio/noise/noise_54.wav"
+    waveform, sr = torchaudio.load(wav_path)
+    diagnostic_cochlea(waveform, "cpu") """

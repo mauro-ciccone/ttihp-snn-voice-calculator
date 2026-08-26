@@ -32,10 +32,16 @@ def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
         lbl_dir = os.path.join(cache_dir, lbl)
         files = [f for f in os.listdir(lbl_dir) if f.endswith(".pt")]
         
-        # STRICT LEAKAGE PREVENTION:
-        # aug0 goes to TEST. aug1-9 go to TRAIN.
-        class_test = [(os.path.join(lbl_dir, f), lbl) for f in files if f.endswith("_aug0.pt")]
-        class_train = [(os.path.join(lbl_dir, f), lbl) for f in files if not f.endswith("_aug0.pt")]
+        if lbl == "noise":
+            # Noise has no augmentations. Just shuffle and split the raw files.
+            random.shuffle(files)
+            class_test = [(os.path.join(lbl_dir, f), lbl) for f in files[:100]] # Reserve 100 for testing
+            class_train = [(os.path.join(lbl_dir, f), lbl) for f in files[100:]] # The rest go to training
+        else:
+            # STRICT LEAKAGE PREVENTION FOR KEYWORDS:
+            # aug0 goes to TEST. aug1-9 go to TRAIN.
+            class_test = [(os.path.join(lbl_dir, f), lbl) for f in files if f.endswith("_aug0.pt")]
+            class_train = [(os.path.join(lbl_dir, f), lbl) for f in files if not f.endswith("_aug0.pt")]
         
         # Shuffle and cap test files to prevent Noise from hiding accuracy
         random.shuffle(class_test)

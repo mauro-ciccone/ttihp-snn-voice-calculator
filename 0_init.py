@@ -1,7 +1,7 @@
 import os
 import torch
 import datetime
-from model import SpikingNet
+from model import FastSpikingNet
 from utils_ledger import create_ledger, append_commit
 
 # --- INITIALIZATION CONFIG ---
@@ -26,7 +26,7 @@ BASE_CONFIG = {
 # -----------------------------
 
 def main():
-    device = torch.device("cpu") # Change to "mps" or "cuda" if needed
+    device = torch.device("mps") # Change between "mps" or "cpu" if needed
     
     # 1. Create the experiment folder (e.g., experiments/0825_1430_dense_teacher_pipeline)
     timestamp = datetime.datetime.now().strftime("%m%d_%H%M")
@@ -39,8 +39,8 @@ def main():
     create_ledger(folder_path, EXP_NAME, BASE_CONFIG)
     
     # 3. Instantiate the massive 256-neuron network
-    model = SpikingNet(
-        n_mels=BASE_CONFIG["n_mels"],
+    model = FastSpikingNet(
+        num_inputs=BASE_CONFIG["n_mels"],
         num_hidden=BASE_CONFIG["num_hidden"],
         num_outputs=BASE_CONFIG["num_outputs"],
         beta=BASE_CONFIG["beta"]

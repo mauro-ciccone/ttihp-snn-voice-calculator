@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio")
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0825_2327_dense_MSE_loss_pdm"
+TARGET_FOLDER = "experiments/0826_0003_dense_MSE_loss_pdm"
 EPOCHS_TO_RUN = 3
 # -------------
 
@@ -183,27 +183,49 @@ def main():
             spk_out = model(spikes_in)
             spike_counts = spk_out.sum(dim=1)
 
-            # Silence-as-Rejection Target Matrix
+            # 1. Base MSE Loss
             target_counts = torch.zeros_like(spike_counts)
             for b in range(len(y)):
                 label = y[b].item()
                 if label != idx_noise: 
                     target_counts[b, label] = config["target_spikes"]
             
-            # Pure MSE Loss
-            mse_loss = criterion(spike_counts, target_counts)
+            base_mse = nn.functional.mse_loss(spike_counts, target_counts, reduction='none')
 
             spikes_zwoi = spike_counts[:, idx_zwoi]
             spikes_foif = spike_counts[:, idx_foif]
             is_foif = (y == idx_foif).float()
             is_zwoi = (y == idx_zwoi).float()
             conf_loss = torch.mean((spikes_zwoi * is_foif)**2 + (spikes_foif * is_zwoi)**2)
+            
+            # 2. Asymmetric Scaling: Make missing keyword spikes 5x more painful than noise errors
+            weights = torch.ones_like(y, dtype=torch.float32, device=device)
+            keyword_mask = (y != idx_noise)
+            weights[keyword_mask] = 5.0  # Heavy penalty for ignoring keywords
+            
+            weighted_mse = (base_mse.mean(dim=1) * weights).mean()
+            
+            # 3. Cross-Talk Penalty: Stop incorrect neurons from firing during keywords
+            cross_talk_loss = torch.tensor(0.0, device=device)
+            for b in range(len(y)):
+                label = y[b].item()
+                # If it's a valid keyword and its label index is within our 8 model outputs (< 8)
+                if label != idx_noise and label < 8:
+                    # Create a mask matching the 8 model outputs
+                    wrong_mask = torch.ones(8, dtype=torch.bool, device=device)
+                    wrong_mask[label] = False
+                    
+                    cross_talk_loss = cross_talk_loss + torch.sum(spike_counts[b, wrong_mask] ** 2)
+            
+            cross_talk_loss = cross_talk_loss / len(y) * 0.1  # Scale factor
 
+            # L1 sparsity penalty
             l1_loss = torch.norm(model.fc_in.weight, p=1) + torch.norm(model.fc_rec.weight, p=1) + torch.norm(model.fc_out.weight, p=1)
+            current_lambda_l1 = config["lambda_l1"] if epoch >= 20 else 0.0
 
-            current_lambda_l1 = config["lambda_l1"] if epoch >= 50 else 0.0
-
-            loss = mse_loss + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
+            # Total Loss
+            loss = weighted_mse + cross_talk_loss + (config["lambda_confusion"] * conf_loss) + (current_lambda_l1 * l1_loss)
+            
             loss.backward()
             optimizer.step()
 

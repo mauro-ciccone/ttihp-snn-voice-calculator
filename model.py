@@ -17,7 +17,7 @@ class FastSpikingNet(nn.Module):
         with torch.no_grad():
             self.fc_in.weight.data.normal_(mean=0.36, std=0.05)
             self.fc_rec.weight.data.normal_(mean=0.0, std=0.05) # Keep recurrent quiet
-            self.fc_out.weight.data.normal_(mean=0.006, std=0.01)
+            self.fc_out.weight.data.normal_(mean=0.09, std=0.01)
 
     def forward(self, x):
         mem_hidden = self.lif_hidden.init_leaky()

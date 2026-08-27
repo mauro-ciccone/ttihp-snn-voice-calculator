@@ -16,8 +16,8 @@ warnings.filterwarnings(
 )
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0827_0043_full_diagnostics"
-EPOCHS_TO_RUN = 5
+TARGET_FOLDER = "experiments/0827_1716_sigma_delta_sim_inputs"
+EPOCHS_TO_RUN = 1
 # -------------
 
 def run_evaluation(model, data_loader, device, idx_noise):
@@ -96,7 +96,7 @@ def main():
             spk_out, _ = model(x)
             spike_counts = spk_out.sum(dim=1)
             
-            # Base MSE Loss
+            # 1. Base MSE (This natively handles cross-talk suppression!)
             target_counts = torch.zeros_like(spike_counts)
             for b in range(len(y)):
                 if y[b].item() != idx_noise: 
@@ -104,26 +104,19 @@ def main():
             
             base_mse = nn.functional.mse_loss(spike_counts, target_counts, reduction='none')
             
-            # Asymmetric Scaling
+            # 2. Asymmetric Scaling (Focus on the keywords)
             weights = torch.ones_like(y, dtype=torch.float32, device=device)
             weights[y != idx_noise] = 5.0
-            weighted_mse = (base_mse.mean(dim=1) * weights).mean()
             
-            # Cross-talk Penalty
-            cross_talk_loss = torch.tensor(0.0, device=device)
-            for b in range(len(y)):
-                label = y[b].item()
-                if label != idx_noise and label < 8:
-                    wrong_mask = torch.ones(8, dtype=torch.bool, device=device)
-                    wrong_mask[label] = False
-                    cross_talk_loss = cross_talk_loss + torch.sum(spike_counts[b, wrong_mask] ** 2)
-            cross_talk_loss = cross_talk_loss / len(y) * 0.1
+            # The final clean loss
+            loss = (base_mse.mean(dim=1) * weights).mean()
             
-            loss = weighted_mse + cross_talk_loss
+            # 3. Guardrailed Backprop
             loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=100.0)
-
+            
+            # Act as a shock absorber so the network doesn't panic
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0) 
+            
             optimizer.step()
             total_loss += loss.item()
             
@@ -159,17 +152,6 @@ def main():
         print(f"{label_names[i]:<13} | " + " | ".join([f"{val:>6.1f}" for val in row]))
 
     target_tensor = torch.tensor(targets)
-    
-    # --- 1. INPUT Spike Counter (The Silicon Cochlea) ---
-    print("\n--- Average INPUT Spikes (Channels 0-7) ---")
-    header_in = f"{'Target Class':<13} | " + " | ".join([f"Ch {i}" for i in range(8)])
-    print(header_in)
-    print("-" * len(header_in))
-    for i in range(num_classes):
-        class_mask = target_tensor == i
-        if class_mask.sum() > 0:
-            mean_in = input_counts[class_mask].float().mean(dim=0)
-            print(f"{label_names[i]:<13} | " + " | ".join([f"{val:>4.0f}" for val in mean_in]))
 
     # --- 2. HIDDEN Layer Activity (128 Neurons) ---
     print("\n--- HIDDEN Layer Activity (128 Neurons) ---")

@@ -21,10 +21,8 @@ class CachedSpikeDataset(Dataset):
         return spike_tensor, label
 
 def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
-    labels = sorted([d for d in os.listdir(cache_dir) if not d.startswith(".")])
-    if "noise" in labels:
-        labels.remove("noise")
-        labels.append("noise")
+    # Lock indices: 0-5 = Keywords, 6 = Noise Drain Neuron, 7 = Virtual Silence
+    labels = ["drü", "eis", "minus", "plus", "vier", "zwoi", "noise", "silence"]
     labels_map = {lbl: i for i, lbl in enumerate(labels)}
     
     train_files, test_files = [], []
@@ -32,20 +30,19 @@ def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
         lbl_dir = os.path.join(cache_dir, lbl)
         files = [f for f in os.listdir(lbl_dir) if f.endswith(".pt")]
         
-        if lbl == "noise":
-            # Noise has no augmentations. Just shuffle and split the raw files.
+        if lbl in ["noise", "silence"]:
+            # Ambient classes have no augmentations. Shuffle and split.
             random.shuffle(files)
-            class_test = [(os.path.join(lbl_dir, f), lbl) for f in files[:100]] # Reserve 100 for testing
-            class_train = [(os.path.join(lbl_dir, f), lbl) for f in files[100:]] # The rest go to training
+            class_test = [(os.path.join(lbl_dir, f), lbl) for f in files[:100]] 
+            class_train = [(os.path.join(lbl_dir, f), lbl) for f in files[100:]] 
         else:
             # STRICT LEAKAGE PREVENTION FOR KEYWORDS:
-            # aug0 goes to TEST. aug1-9 go to TRAIN.
             class_test = [(os.path.join(lbl_dir, f), lbl) for f in files if f.endswith("_aug0.pt")]
             class_train = [(os.path.join(lbl_dir, f), lbl) for f in files if not f.endswith("_aug0.pt")]
-        
-        # Shuffle and cap test files to prevent Noise from hiding accuracy
+            
+        # Shuffle and cap test files to prevent ambient classes from hiding accuracy
         random.shuffle(class_test)
-        test_files.extend(class_test[:20]) 
+        test_files.extend(class_test[:20])
         train_files.extend(class_train)
 
     train_dataset = CachedSpikeDataset(train_files, labels_map)

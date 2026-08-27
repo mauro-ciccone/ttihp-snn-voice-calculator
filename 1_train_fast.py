@@ -20,7 +20,7 @@ TARGET_FOLDER = "experiments/0827_1716_sigma_delta_sim_inputs"
 EPOCHS_TO_RUN = 1
 # -------------
 
-def run_evaluation(model, data_loader, device, idx_noise):
+def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
     model.eval()
     val_correct, val_total = 0, 0
     all_preds, all_targets, all_spikes = [], [], []
@@ -34,7 +34,7 @@ def run_evaluation(model, data_loader, device, idx_noise):
             
             # Use threshold of 5 for dynamic hardware inference
             max_spikes, raw_preds = spike_counts.max(dim=1)
-            preds = torch.where(max_spikes < 5, torch.tensor(idx_noise, device=device), raw_preds)
+            preds = torch.where(max_spikes < 5, torch.tensor(idx_silence, device=device), raw_preds)
             
             val_correct += (preds == y).sum().item()
             val_total += y.size(0)
@@ -67,7 +67,8 @@ def main():
     # 2. Data Loaders
     train_loader, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
     inv_labels = {v: k for k, v in labels_map.items()}
-    idx_noise = labels_map.get("noise", 8)
+    idx_noise = labels_map.get("noise", 6)
+    idx_silence = labels_map.get("silence", 7)
     num_classes = len(labels_map)
     
     # 3. Model Setup
@@ -96,46 +97,43 @@ def main():
             spk_out, _ = model(x)
             spike_counts = spk_out.sum(dim=1)
             
-            # 1. Base MSE (This natively handles cross-talk suppression!)
-            target_counts = torch.zeros_like(spike_counts)
+            # Target is explicitly sized to the 7 physical hardware neurons
+            target_counts = torch.zeros(len(y), config["num_outputs"], device=device)
             for b in range(len(y)):
-                if y[b].item() != idx_noise: 
-                    target_counts[b, y[b].item()] = config["target_spikes"]
+                lbl_idx = y[b].item()
+                if lbl_idx < config["num_outputs"]: 
+                    # Train neurons 0-5 to spike for keywords, and neuron 6 to spike for noise
+                    target_counts[b, lbl_idx] = config["target_spikes"]
+                # If lbl_idx == 7 (silence), targets remain all zeros.
+
+            # Smooth L1 prevents massive squared gradient explosions on loud noise files
+            base_loss = nn.functional.smooth_l1_loss(spike_counts, target_counts, reduction='none')
             
-            base_mse = nn.functional.mse_loss(spike_counts, target_counts, reduction='none')
-            
-            # 2. Asymmetric Scaling (Focus on the keywords)
+            # Treat all classes equally now that the architecture has a physical noise drain
             weights = torch.ones_like(y, dtype=torch.float32, device=device)
-            weights[y != idx_noise] = 5.0
             
-            # The final clean loss
-            loss = (base_mse.mean(dim=1) * weights).mean()
+            loss = (base_loss.mean(dim=1) * weights).mean()
             
-            # 3. Guardrailed Backprop
             loss.backward()
-            
-            # Act as a shock absorber so the network doesn't panic
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0) 
-            
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) 
             optimizer.step()
             total_loss += loss.item()
             
             max_spikes, raw_preds = spike_counts.max(dim=1)
-            preds = torch.where(max_spikes < 5, torch.tensor(idx_noise, device=device), raw_preds)
+            # If max_spikes < 5, classify as Silence (idx 7). Otherwise, read the firing neuron (0-6).
+            preds = torch.where(max_spikes < 5, torch.tensor(idx_silence, device=device), raw_preds)
             correct += (preds == y).sum().item()
             total += y.size(0)
             
             pbar.set_postfix({"Loss": f"{loss.item():.2f}", "Acc": f"{(correct/total)*100:.1f}%"})
             
         # Quick eval
-        test_acc, _, _, _, _, _ = run_evaluation(model, test_loader, device, idx_noise)
+        test_acc, _, _, _, _, _ = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
         print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train Acc: {(correct/total)*100:.1f}% | Test Acc: {test_acc:.1f}%")
 
     # 5. Final Deep Diagnostic
     print("\nRunning Final Diagnostics...")
-    final_test_acc, preds, targets, spike_counts, input_counts, hidden_counts = run_evaluation(
-        model, test_loader, device, idx_noise
-    )
+    final_test_acc, preds, targets, spike_counts, input_counts, hidden_counts = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
     
     # Confusion Matrix
     cm = [[0] * num_classes for _ in range(num_classes)]
@@ -167,7 +165,7 @@ def main():
 
     # --- 3. Output Spike Counter ---
     print("\n--- Average Output Spikes per Target Class ---")
-    neuron_names = [inv_labels[i] for i in range(8)] 
+    neuron_names = [inv_labels[i] for i in range(7)] 
     header_spikes = f"{'Target Class':<13} | " + " | ".join([f"{lbl:>6}" for lbl in neuron_names])
     print(header_spikes)
     print("-" * len(header_spikes))

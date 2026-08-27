@@ -9,7 +9,7 @@ EXP_NAME = "sigma_delta_sim_inputs"
 BASE_CONFIG = {
     "num_inputs": 8,           # 8 hardware LIF channels (formerly n_mels)
     "num_hidden": 128,         # Hidden recurrent neurons
-    "num_outputs": 8,          # 8 keyword classes
+    "num_outputs": 7,          # 7 keyword classes
     "batch_size": 128,
     "beta": 0.88,              # Hidden layer leak rate
     "lr": 0.001,               # Hotter start to break the initial deadzone

@@ -5,17 +5,17 @@ from model import FastSpikingNet
 from utils_ledger import create_ledger, append_commit
 
 # --- INITIALIZATION CONFIG ---
-EXP_NAME = "sigma_delta_sim_inputs"
+EXP_NAME = "silence_noise_split"
 BASE_CONFIG = {
     "num_inputs": 8,           # 8 hardware LIF channels (formerly n_mels)
     "num_hidden": 128,         # Hidden recurrent neurons
     "num_outputs": 7,          # 7 keyword classes
     "batch_size": 128,
     "beta": 0.88,              # Hidden layer leak rate
-    "lr": 0.001,               # Hotter start to break the initial deadzone
-    "target_spikes": 50,       # Target threshold for keyword firing
-    "cross_talk_scale": 0.1,   # Penalty weight for silencing wrong neurons
-    "snn_clock_hz": 1000       # Documenting the speed of our hidden layer
+    "lr": 0.0002,               # Hotter start to break the initial deadzone
+    #"target_spikes": 50,       # Target threshold for keyword firing
+    #"cross_talk_scale": 0.1,   # Penalty weight for silencing wrong neurons
+    #"snn_clock_hz": 1000       # Documenting the speed of our hidden layer
 }
 # -----------------------------
 

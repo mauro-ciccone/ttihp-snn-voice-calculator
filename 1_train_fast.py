@@ -16,7 +16,7 @@ warnings.filterwarnings(
 )
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0827_1716_sigma_delta_sim_inputs"
+TARGET_FOLDER = "experiments/0828_0305_silence_noise_split"
 EPOCHS_TO_RUN = 1
 # -------------
 
@@ -34,7 +34,7 @@ def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
             
             # Use threshold of 5 for dynamic hardware inference
             max_spikes, raw_preds = spike_counts.max(dim=1)
-            preds = torch.where(max_spikes < 5, torch.tensor(idx_silence, device=device), raw_preds)
+            preds = torch.where(max_spikes < 10, torch.tensor(idx_silence, device=device), raw_preds)
             
             val_correct += (preds == y).sum().item()
             val_total += y.size(0)
@@ -95,36 +95,51 @@ def main():
             optimizer.zero_grad()
             
             spk_out, _ = model(x)
-            spike_counts = spk_out.sum(dim=1)
+            spike_counts = spk_out.sum(dim=1)   # Shape: [batch_size, 7]
             
-            # Target is explicitly sized to the 7 physical hardware neurons
-            target_counts = torch.zeros(len(y), config["num_outputs"], device=device)
-            for b in range(len(y)):
-                lbl_idx = y[b].item()
-                if lbl_idx < config["num_outputs"]: 
-                    # Train neurons 0-5 to spike for keywords, and neuron 6 to spike for noise
-                    target_counts[b, lbl_idx] = config["target_spikes"]
-                # If lbl_idx == 7 (silence), targets remain all zeros.
+            # 2. Route the Data
+            active_mask = y < config["num_outputs"] # Keywords (0-5) and Noise (6)
+            silence_mask = y == idx_silence         # Silence (7)
+    
+            loss = torch.tensor(0.0, device=device, requires_grad=True)
+    
+            # 3. Calculate Loss
+            if active_mask.any():
+                active_spikes = spike_counts[active_mask]
+                active_targets = y[active_mask]
 
-            # Smooth L1 prevents massive squared gradient explosions on loud noise files
-            base_loss = nn.functional.smooth_l1_loss(spike_counts, target_counts, reduction='none')
-            
-            # Treat all classes equally now that the architecture has a physical noise drain
-            weights = torch.ones_like(y, dtype=torch.float32, device=device)
-            
-            loss = (base_loss.mean(dim=1) * weights).mean()
-            
+                target_spike_vals = active_spikes[torch.arange(len(active_targets)), active_targets]
+                loss = loss + torch.relu(40.0 - target_spike_vals).mean()
+                loss = loss + torch.relu(target_spike_vals - 50).mean()
+                target_ideal = torch.full_like(target_spike_vals, 45.0)
+                loss = loss + 0.1*nn.functional.smooth_l1_loss(target_spike_vals, target_ideal)
+        
+                other_mask = torch.ones_like(active_spikes, dtype=torch.bool)
+                other_mask[torch.arange(len(active_targets)), active_targets] = False
+                other_spikes = active_spikes[other_mask]
+                loss = loss + torch.relu(other_spikes - 7.0).mean() # -7 means 8+ triggers penalty
+        
+            if silence_mask.any():
+                # 4. Silence Penalty: Punish if ANY neuron spikes >= 8
+                loss = loss + torch.relu(spike_counts[silence_mask] - 7.0).mean()
+    
+            # 4. Backpropagate
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) 
             optimizer.step()
             total_loss += loss.item()
-            
+
+            with torch.no_grad():
+                model.fc_in.weight.data.clamp_(min=0.01)
+                #model.fc_out.weight.data.clamp_(min=0.01)
+                #model.fc_rec.weight.data.clamp_(min=-0.05, max=0.05)
+    
+            # 5. Calculate Accuracy
             max_spikes, raw_preds = spike_counts.max(dim=1)
-            # If max_spikes < 5, classify as Silence (idx 7). Otherwise, read the firing neuron (0-6).
-            preds = torch.where(max_spikes < 5, torch.tensor(idx_silence, device=device), raw_preds)
+            preds = torch.where(max_spikes < 10, torch.tensor(idx_silence, device=device), raw_preds)
             correct += (preds == y).sum().item()
             total += y.size(0)
-            
+    
             pbar.set_postfix({"Loss": f"{loss.item():.2f}", "Acc": f"{(correct/total)*100:.1f}%"})
             
         # Quick eval

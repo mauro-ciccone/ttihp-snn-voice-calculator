@@ -1,0 +1,22 @@
+{
+    "experiment_name": "dynamic_lr",
+    "base_config": {
+        "num_inputs": 8,
+        "num_hidden": 128,
+        "num_outputs": 7,
+        "batch_size": 128,
+        "beta": 0.88,
+        "lr": 0.002
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0829_1530",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "status": "initialized_fast_snn"
+            }
+        }
+    ]
+}

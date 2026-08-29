@@ -16,7 +16,7 @@ warnings.filterwarnings(
 )
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0829_0011_dynamic_lr"
+TARGET_FOLDER = "experiments/0829_1530_dynamic_lr"
 EPOCHS_TO_RUN = 150
 # -------------
 
@@ -84,6 +84,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=8, min_lr=1e-5)
     
     best_test_acc = 0.0
+    best_combined_acc = 0.0
     start_epoch = 0
 
     model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
@@ -105,11 +106,13 @@ def main():
     for epoch in range(start_epoch, start_epoch + EPOCHS_TO_RUN):
         model.train()
         total_loss, correct, total = 0.0, 0, 0
+        samples = 0
         
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1:02d}", leave=False)
         for x, y in pbar:
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
+            samples += 1
             
             spk_out, _ = model(x)
             spike_counts = spk_out.sum(dim=1)   # Shape: [batch_size, 7]
@@ -120,22 +123,24 @@ def main():
     
             loss = torch.tensor(0.0, device=device, requires_grad=True)
     
-            # 3. Calculate Loss
             if active_mask.any():
                 active_spikes = spike_counts[active_mask]
                 active_targets = y[active_mask]
 
                 target_spike_vals = active_spikes[torch.arange(len(active_targets)), active_targets]
 
-                loss = loss + torch.relu(40.0 - target_spike_vals).mean()
-                loss = loss + torch.relu(target_spike_vals - 50).mean()
-                target_ideal = torch.full_like(target_spike_vals, 45.0)
-                loss = loss + 2*nn.functional.smooth_l1_loss(target_spike_vals, target_ideal)
-        
+                # 1. Target Volume: Keep target firing actively (35-50 spikes)
+                loss = loss + 2.0 * torch.relu(35.0 - target_spike_vals).mean()
+                loss = loss + torch.relu(target_spike_vals - 50.0).mean()
+
+                # 2. Loudest Competitor Isolation:
                 other_mask = torch.ones_like(active_spikes, dtype=torch.bool)
                 other_mask[torch.arange(len(active_targets)), active_targets] = False
-                other_spikes = active_spikes[other_mask]
-                loss = loss + 5*torch.relu(other_spikes - 7.0).mean() # -7 means 8+ triggers penalty
+                other_spikes_2d = active_spikes[other_mask].view(len(active_targets), -1)
+                max_competitor_vals, _ = other_spikes_2d.max(dim=1)
+
+                # 3. Margin Penalty: Target must beat the single loudest runner-up by >= 12 spikes
+                loss = loss + 1.5 * torch.relu(12.0 - (target_spike_vals - max_competitor_vals)).mean()
         
             if silence_mask.any():
                 # 4. Silence Penalty: Punish if ANY neuron spikes >= 8
@@ -159,29 +164,33 @@ def main():
             total += y.size(0)
     
             pbar.set_postfix({"Loss": f"{loss.item():.2f}", "Acc": f"{(correct/total)*100:.1f}%"})
+
+        train_acc = (correct/total) * 100
             
         # Quick eval
         test_acc, _, _, _, _, _ = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
-
-        # --- TRIGGER THE SCHEDULER ---
-        scheduler.step(test_acc)
+        scheduler.step(train_acc) 
         current_lr = optimizer.param_groups[0]['lr']
 
-        print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train Acc: {(correct/total)*100:.1f}% | Test Acc: {test_acc:.1f}% | LR: {current_lr:.6f}")
+        combined_acc = (train_acc + test_acc) / 2.0
 
-        if test_acc > best_test_acc:
-            best_test_acc = test_acc
+        print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train Acc: {(correct/total)*100:.1f}% | Test Acc: {test_acc:.1f}% | LR: {current_lr:.6f} | Loss: {total_loss/samples:.2f}")
+
+        if combined_acc > best_combined_acc:
+            best_combined_acc = combined_acc
             best_model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
             
             checkpoint = {
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(), # <--- ADD THIS
-                "best_test_acc": best_test_acc
+                "scheduler_state_dict": scheduler.state_dict(),
+                "best_combined_acc": best_combined_acc,
+                "train_acc": train_acc,
+                "test_acc": test_acc
             }
             torch.save(checkpoint, best_model_path)
-            print(f"   🌟 New high score! Saved full checkpoint to {best_model_path}")
+            print(f"   🌟 New Best Combined Score! Saved {best_model_path}")
 
     # 5. Final Deep Diagnostic
     print("\nRunning Final Diagnostics...")

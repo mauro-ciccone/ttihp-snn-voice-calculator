@@ -21,40 +21,63 @@ class CachedSpikeDataset(Dataset):
         return spike_tensor, label
 
 def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
-    # Lock indices: 0-5 = Keywords, 6 = Noise Drain Neuron, 7 = Virtual Silence
     labels = ["drü", "eis", "minus", "plus", "vier", "zwoi", "noise", "silence"]
     labels_map = {lbl: i for i, lbl in enumerate(labels)}
     
-    train_files, test_files = [], []
+    temp_train = {lbl: [] for lbl in labels}
+    temp_test = {lbl: [] for lbl in labels}
+    
+    # --- PASS 1: Gather all files and separate Test vs Train ---
     for lbl in labels:
         lbl_dir = os.path.join(cache_dir, lbl)
         files = [f for f in os.listdir(lbl_dir) if f.endswith(".pt")]
         
         if lbl in ["noise", "silence"]:
-            # Ambient classes have no augmentations. Shuffle and split.
             random.shuffle(files)
-            class_test = [(os.path.join(lbl_dir, f), lbl) for f in files[:100]] 
-            class_train = [(os.path.join(lbl_dir, f), lbl) for f in files[100:]] 
+            # Ambient has no augmentations. Reserve 20% for testing.
+            split_idx = int(len(files) * 0.2)
+            temp_test[lbl] = [(os.path.join(lbl_dir, f), lbl) for f in files[:split_idx]]
+            temp_train[lbl] = [(os.path.join(lbl_dir, f), lbl) for f in files[split_idx:]]
         else:
-            # STRICT LEAKAGE PREVENTION FOR KEYWORDS:
-            class_test = [(os.path.join(lbl_dir, f), lbl) for f in files if f.endswith("_aug0.pt")]
-            class_train = [(os.path.join(lbl_dir, f), lbl) for f in files if not f.endswith("_aug0.pt")]
+            # STRICT LEAKAGE PREVENTION: Only raw audio (_aug0) in Test
+            temp_test[lbl] = [(os.path.join(lbl_dir, f), lbl) for f in files if f.endswith("_aug0.pt")]
+            temp_train[lbl] = [(os.path.join(lbl_dir, f), lbl) for f in files if not f.endswith("_aug0.pt")]
             
-        # Shuffle and cap test files to prevent ambient classes from hiding accuracy
-        random.shuffle(class_test)
-        test_files.extend(class_test[:20])
-        train_files.extend(class_train)
+    # --- PASS 2: Dynamic Capping for perfect Test Balance ---
+    min_test_count = min(len(items) for items in temp_test.values())
+    print(f"Dynamically capping Test Set at {min_test_count} samples per class.")
+    
+    # Find the largest keyword class to define our ideal epoch size
+    keyword_labels = ["drü", "eis", "minus", "plus", "vier", "zwoi"]
+    max_keyword_train = max(len(temp_train[lbl]) for lbl in keyword_labels)
+    
+    train_files, test_files = [], []
+    for lbl in labels:
+        # Build perfectly balanced Test Set
+        random.shuffle(temp_test[lbl])
+        test_files.extend(temp_test[lbl][:min_test_count])
+        
+        # Build Train Set: Put EVERYTHING in (No capping!)
+        train_files.extend(temp_train[lbl])
 
     train_dataset = CachedSpikeDataset(train_files, labels_map)
     test_dataset = CachedSpikeDataset(test_files, labels_map)
 
-    # Balance Training batches
+    # --- BALANCING WITH THE SAMPLER ---
     train_labels = [labels_map[lbl] for _, lbl in train_files]
     class_counts = np.bincount(train_labels, minlength=len(labels_map))
     class_weights = 1.0 / np.maximum(class_counts, 1)
     sample_weights = [class_weights[y] for y in train_labels]
     
-    sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(train_files), replacement=True)
+    # THE FIX: We restrict the length of an epoch, not the dataset!
+    # 8 classes * largest keyword size = perfectly sized epoch
+    optimal_epoch_size = max_keyword_train * len(labels)
+    
+    sampler = WeightedRandomSampler(
+        weights=sample_weights, 
+        num_samples=optimal_epoch_size, # <-- The Sampler dynamically limits the epoch
+        replacement=True
+    )
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=0)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)

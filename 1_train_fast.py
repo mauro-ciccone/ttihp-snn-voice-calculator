@@ -16,8 +16,8 @@ warnings.filterwarnings(
 )
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0828_0305_silence_noise_split"
-EPOCHS_TO_RUN = 1
+TARGET_FOLDER = "experiments/0829_0011_dynamic_lr"
+EPOCHS_TO_RUN = 150
 # -------------
 
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
@@ -79,13 +79,30 @@ def main():
         beta=config["beta"]
     ).to(device)
     
-    model_path = os.path.join(TARGET_FOLDER, latest_commit["model_file"]) # pyright: ignore[reportOptionalSubscript]
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=8, min_lr=1e-5)
+    
+    best_test_acc = 0.0
+    start_epoch = 0
+
+    model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
+    if os.path.exists(model_path):
+        checkpoint = torch.load(model_path, map_location=device)
+        
+        # Check if it's a new full checkpoint or old legacy weights
+        if "model_state_dict" in checkpoint:
+            model.load_state_dict(checkpoint["model_state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            best_test_acc = checkpoint.get("best_test_acc", 0.0)
+            start_epoch = checkpoint.get("epoch", 0) + 1
+            print(f">>> Resuming from Epoch {start_epoch-1} | Best Acc: {best_test_acc:.1f}%")
+        else:
+            model.load_state_dict(checkpoint)
+            print(">>> Loaded legacy raw model weights.")
     
     # 4. Training Loop
-    for epoch in range(EPOCHS_TO_RUN):
+    for epoch in range(start_epoch, start_epoch + EPOCHS_TO_RUN):
         model.train()
         total_loss, correct, total = 0.0, 0, 0
         
@@ -109,15 +126,16 @@ def main():
                 active_targets = y[active_mask]
 
                 target_spike_vals = active_spikes[torch.arange(len(active_targets)), active_targets]
+
                 loss = loss + torch.relu(40.0 - target_spike_vals).mean()
                 loss = loss + torch.relu(target_spike_vals - 50).mean()
                 target_ideal = torch.full_like(target_spike_vals, 45.0)
-                loss = loss + 0.1*nn.functional.smooth_l1_loss(target_spike_vals, target_ideal)
+                loss = loss + 2*nn.functional.smooth_l1_loss(target_spike_vals, target_ideal)
         
                 other_mask = torch.ones_like(active_spikes, dtype=torch.bool)
                 other_mask[torch.arange(len(active_targets)), active_targets] = False
                 other_spikes = active_spikes[other_mask]
-                loss = loss + torch.relu(other_spikes - 7.0).mean() # -7 means 8+ triggers penalty
+                loss = loss + 5*torch.relu(other_spikes - 7.0).mean() # -7 means 8+ triggers penalty
         
             if silence_mask.any():
                 # 4. Silence Penalty: Punish if ANY neuron spikes >= 8
@@ -144,7 +162,26 @@ def main():
             
         # Quick eval
         test_acc, _, _, _, _, _ = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
-        print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train Acc: {(correct/total)*100:.1f}% | Test Acc: {test_acc:.1f}%")
+
+        # --- TRIGGER THE SCHEDULER ---
+        scheduler.step(test_acc)
+        current_lr = optimizer.param_groups[0]['lr']
+
+        print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train Acc: {(correct/total)*100:.1f}% | Test Acc: {test_acc:.1f}% | LR: {current_lr:.6f}")
+
+        if test_acc > best_test_acc:
+            best_test_acc = test_acc
+            best_model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
+            
+            checkpoint = {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(), # <--- ADD THIS
+                "best_test_acc": best_test_acc
+            }
+            torch.save(checkpoint, best_model_path)
+            print(f"   🌟 New high score! Saved full checkpoint to {best_model_path}")
 
     # 5. Final Deep Diagnostic
     print("\nRunning Final Diagnostics...")
@@ -209,9 +246,17 @@ def main():
         print(f">= {margin:2d} spikes diff | {retained:3d}/{len(targets):3d} retained ({ret_pct:5.1f}%) | {acc_retained:5.1f}%")
 
     # 6. Commit to Ledger
-    next_id = f"{int(latest_commit['commit_id']) + 1:02d}" # pyright: ignore[reportOptionalSubscript]
+    next_id = f"{int(latest_commit['commit_id']) + 1:02d}" # pyright: ignore
     new_model_filename = f"model_{next_id}_train.pth"
-    torch.save(model.state_dict(), os.path.join(TARGET_FOLDER, new_model_filename))
+    
+    final_checkpoint = {
+        "epoch": checkpoint.get("epoch", 0) + EPOCHS_TO_RUN, # type: ignore
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "best_test_acc": final_test_acc,
+        "scheduler_state_dict": scheduler.state_dict()
+    }
+    torch.save(final_checkpoint, os.path.join(TARGET_FOLDER, new_model_filename))
     
     append_commit(
         folder_path=TARGET_FOLDER,

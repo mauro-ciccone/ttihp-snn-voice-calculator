@@ -5,7 +5,7 @@ from model import FastSpikingNet
 from utils_ledger import create_ledger, append_commit
 
 # --- INITIALIZATION CONFIG ---
-EXP_NAME = "dynamic_lr"
+EXP_NAME = "push_wrong_low"
 BASE_CONFIG = {
     "num_inputs": 8,           # 8 hardware LIF channels (formerly n_mels)
     "num_hidden": 128,         # Hidden recurrent neurons

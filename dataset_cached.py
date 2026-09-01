@@ -72,6 +72,10 @@ def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
     # THE FIX: We restrict the length of an epoch, not the dataset!
     # 8 classes * largest keyword size = perfectly sized epoch
     optimal_epoch_size = max_keyword_train * len(labels)
+
+    print(f"Max keyword train size: {max_keyword_train}")
+    print(f"Total files in RAM: {len(train_files)}")
+    print(f"Optimal epoch size (Sampler limit): {optimal_epoch_size}")
     
     sampler = WeightedRandomSampler(
         weights=sample_weights, 

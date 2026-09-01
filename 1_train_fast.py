@@ -16,8 +16,8 @@ warnings.filterwarnings(
 )
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0829_1530_dynamic_lr"
-EPOCHS_TO_RUN = 150
+TARGET_FOLDER = "experiments/0901_1052_push_wrong_low"
+EPOCHS_TO_RUN = 300
 # -------------
 
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
@@ -81,16 +81,15 @@ def main():
     
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=8, min_lr=1e-5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.75, patience=20, min_lr=1e-5)
     
     best_test_acc = 0.0
     best_combined_acc = 0.0
     start_epoch = 0
 
-    model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
+    model_path = os.path.join(TARGET_FOLDER, "model_00_init.pth")
     if os.path.exists(model_path):
         checkpoint = torch.load(model_path, map_location=device)
-        
         # Check if it's a new full checkpoint or old legacy weights
         if "model_state_dict" in checkpoint:
             model.load_state_dict(checkpoint["model_state_dict"])
@@ -106,13 +105,13 @@ def main():
     for epoch in range(start_epoch, start_epoch + EPOCHS_TO_RUN):
         model.train()
         total_loss, correct, total = 0.0, 0, 0
-        samples = 0
+        batches = 0
         
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1:02d}", leave=False)
         for x, y in pbar:
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            samples += 1
+            batches += 1
             
             spk_out, _ = model(x)
             spike_counts = spk_out.sum(dim=1)   # Shape: [batch_size, 7]
@@ -129,8 +128,8 @@ def main():
 
                 target_spike_vals = active_spikes[torch.arange(len(active_targets)), active_targets]
 
-                # 1. Target Volume: Keep target firing actively (35-50 spikes)
-                loss = loss + 2.0 * torch.relu(35.0 - target_spike_vals).mean()
+                # 1. Target Volume: Keep target firing actively (40-50 spikes)
+                loss = loss + 2.0 * torch.relu(40.0 - target_spike_vals).mean()
                 loss = loss + torch.relu(target_spike_vals - 50.0).mean()
 
                 # 2. Loudest Competitor Isolation:
@@ -140,11 +139,11 @@ def main():
                 max_competitor_vals, _ = other_spikes_2d.max(dim=1)
 
                 # 3. Margin Penalty: Target must beat the single loudest runner-up by >= 12 spikes
-                loss = loss + 1.5 * torch.relu(12.0 - (target_spike_vals - max_competitor_vals)).mean()
+                loss = loss + 1.5 * torch.relu(15.0 - (target_spike_vals - max_competitor_vals)).mean()
         
             if silence_mask.any():
                 # 4. Silence Penalty: Punish if ANY neuron spikes >= 8
-                loss = loss + torch.relu(spike_counts[silence_mask] - 7.0).mean()
+                loss = loss + 2*torch.relu(spike_counts[silence_mask] - 7.0).mean()
     
             # 4. Backpropagate
             loss.backward()
@@ -168,16 +167,16 @@ def main():
         train_acc = (correct/total) * 100
             
         # Quick eval
+        epoch_loss = total_loss/batches
         test_acc, _, _, _, _, _ = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
-        scheduler.step(train_acc) 
+        average_perf = (100-epoch_loss + test_acc + train_acc )/ 3
+        scheduler.step(average_perf) 
         current_lr = optimizer.param_groups[0]['lr']
 
-        combined_acc = (train_acc + test_acc) / 2.0
+        print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train Acc: {(correct/total)*100:.1f}% | Test Acc: {test_acc:.1f}% | LR: {current_lr:.6f} | Loss: {epoch_loss:.2f}")
 
-        print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train Acc: {(correct/total)*100:.1f}% | Test Acc: {test_acc:.1f}% | LR: {current_lr:.6f} | Loss: {total_loss/samples:.2f}")
-
-        if combined_acc > best_combined_acc:
-            best_combined_acc = combined_acc
+        if average_perf > best_combined_acc:
+            best_combined_acc = average_perf
             best_model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
             
             checkpoint = {

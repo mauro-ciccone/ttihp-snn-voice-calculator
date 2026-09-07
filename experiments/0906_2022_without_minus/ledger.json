@@ -323,6 +323,108 @@
                     }
                 }
             }
+        },
+        {
+            "commit_id": "07",
+            "timestamp": "0907_1253",
+            "action": "train",
+            "model_file": "model_07_train.pth",
+            "metrics": {
+                "best_test_acc": 81.07,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 972,
+                        "ret_pct": 98.68020304568527,
+                        "acc": 76.8545994065282
+                    },
+                    "margin_1": {
+                        "retained": 936,
+                        "ret_pct": 95.0253807106599,
+                        "acc": 77.7319587628866
+                    },
+                    "margin_2": {
+                        "retained": 872,
+                        "ret_pct": 88.52791878172589,
+                        "acc": 80.6881243063263
+                    },
+                    "margin_3": {
+                        "retained": 815,
+                        "ret_pct": 82.74111675126903,
+                        "acc": 82.47914183551848
+                    },
+                    "margin_4": {
+                        "retained": 748,
+                        "ret_pct": 75.93908629441624,
+                        "acc": 84.9869451697128
+                    },
+                    "margin_5": {
+                        "retained": 691,
+                        "ret_pct": 70.15228426395939,
+                        "acc": 87.51773049645391
+                    },
+                    "margin_10": {
+                        "retained": 408,
+                        "ret_pct": 41.421319796954315,
+                        "acc": 94.24460431654677
+                    },
+                    "margin_15": {
+                        "retained": 192,
+                        "ret_pct": 19.49238578680203,
+                        "acc": 96.93877551020408
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "08",
+            "timestamp": "0907_1256",
+            "action": "train",
+            "model_file": "model_08_train.pth",
+            "metrics": {
+                "best_test_acc": 82.67,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 971,
+                        "ret_pct": 98.57868020304569,
+                        "acc": 78.52882703777337
+                    },
+                    "margin_1": {
+                        "retained": 941,
+                        "ret_pct": 95.53299492385787,
+                        "acc": 79.54779033915725
+                    },
+                    "margin_2": {
+                        "retained": 873,
+                        "ret_pct": 88.62944162436548,
+                        "acc": 81.0
+                    },
+                    "margin_3": {
+                        "retained": 794,
+                        "ret_pct": 80.60913705583756,
+                        "acc": 83.70098039215686
+                    },
+                    "margin_4": {
+                        "retained": 745,
+                        "ret_pct": 75.63451776649747,
+                        "acc": 85.56430446194226
+                    },
+                    "margin_5": {
+                        "retained": 681,
+                        "ret_pct": 69.13705583756345,
+                        "acc": 87.66140602582496
+                    },
+                    "margin_10": {
+                        "retained": 408,
+                        "ret_pct": 41.421319796954315,
+                        "acc": 94.44444444444444
+                    },
+                    "margin_15": {
+                        "retained": 194,
+                        "ret_pct": 19.695431472081218,
+                        "acc": 97.46192893401016
+                    }
+                }
+            }
         }
     ]
 }

@@ -17,7 +17,7 @@ warnings.filterwarnings(
 
 # --- SETUP ---
 TARGET_FOLDER = "experiments/0906_2022_without_minus"
-EPOCHS_TO_RUN = 100
+EPOCHS_TO_RUN = 0
 # -------------
 
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):

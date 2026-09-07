@@ -24,11 +24,12 @@ module tt_um_example (
   wire _unused = &{ena, uio_in, 1'b0};
 
   // Instantiate the massive 46-neuron SNN
-    tt_um_snn_hardwired snn_core (
+    tt_um_snn_fsm snn_core (
         .ui_in(ui_in),
         .uo_out(uo_out),
         .clk(clk),
-        .rst_n(rst_n)
+        .rst_n(rst_n),
+        .tick_1ms(uio_in[0])
     );
 
 endmodule

@@ -1,0 +1,328 @@
+{
+    "experiment_name": "without_minus",
+    "base_config": {
+        "num_inputs": 8,
+        "num_hidden": 40,
+        "num_outputs": 6,
+        "batch_size": 128,
+        "beta": 0.88,
+        "lr": 0.002
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0906_2022",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "status": "initialized_fast_snn"
+            }
+        },
+        {
+            "commit_id": "01",
+            "timestamp": "0907_0009",
+            "action": "train",
+            "model_file": "model_01_train.pth",
+            "metrics": {
+                "best_test_acc": 80.2,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 963,
+                        "ret_pct": 97.76649746192894,
+                        "acc": 76.04373757455268
+                    },
+                    "margin_1": {
+                        "retained": 927,
+                        "ret_pct": 94.11167512690355,
+                        "acc": 77.54677754677755
+                    },
+                    "margin_2": {
+                        "retained": 847,
+                        "ret_pct": 85.98984771573605,
+                        "acc": 80.5239179954442
+                    },
+                    "margin_3": {
+                        "retained": 784,
+                        "ret_pct": 79.59390862944163,
+                        "acc": 82.32385661310259
+                    },
+                    "margin_4": {
+                        "retained": 722,
+                        "ret_pct": 73.2994923857868,
+                        "acc": 84.86486486486487
+                    },
+                    "margin_5": {
+                        "retained": 658,
+                        "ret_pct": 66.80203045685279,
+                        "acc": 86.64688427299704
+                    },
+                    "margin_10": {
+                        "retained": 386,
+                        "ret_pct": 39.18781725888325,
+                        "acc": 92.82051282051282
+                    },
+                    "margin_15": {
+                        "retained": 170,
+                        "ret_pct": 17.258883248730964,
+                        "acc": 97.67441860465115
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "02",
+            "timestamp": "0907_0306",
+            "action": "train",
+            "model_file": "model_02_train.pth",
+            "metrics": {
+                "best_test_acc": 73.46,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 973,
+                        "ret_pct": 98.78172588832487,
+                        "acc": 65.8869395711501
+                    },
+                    "margin_1": {
+                        "retained": 938,
+                        "ret_pct": 95.22842639593908,
+                        "acc": 67.20484359233097
+                    },
+                    "margin_2": {
+                        "retained": 852,
+                        "ret_pct": 86.497461928934,
+                        "acc": 69.37639198218262
+                    },
+                    "margin_3": {
+                        "retained": 793,
+                        "ret_pct": 80.50761421319797,
+                        "acc": 71.18847539015606
+                    },
+                    "margin_4": {
+                        "retained": 737,
+                        "ret_pct": 74.82233502538071,
+                        "acc": 73.25581395348837
+                    },
+                    "margin_5": {
+                        "retained": 679,
+                        "ret_pct": 68.93401015228426,
+                        "acc": 75.31556802244039
+                    },
+                    "margin_10": {
+                        "retained": 451,
+                        "ret_pct": 45.786802030456855,
+                        "acc": 83.89830508474576
+                    },
+                    "margin_15": {
+                        "retained": 285,
+                        "ret_pct": 28.934010152284262,
+                        "acc": 89.49152542372882
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "03",
+            "timestamp": "0907_1111",
+            "action": "train",
+            "model_file": "model_03_train.pth",
+            "metrics": {
+                "best_test_acc": 73.39,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 973,
+                        "ret_pct": 98.78172588832487,
+                        "acc": 65.98440545808967
+                    },
+                    "margin_1": {
+                        "retained": 937,
+                        "ret_pct": 95.12690355329948,
+                        "acc": 67.3407482305359
+                    },
+                    "margin_2": {
+                        "retained": 853,
+                        "ret_pct": 86.59898477157361,
+                        "acc": 69.56521739130434
+                    },
+                    "margin_3": {
+                        "retained": 793,
+                        "ret_pct": 80.50761421319797,
+                        "acc": 71.13772455089821
+                    },
+                    "margin_4": {
+                        "retained": 735,
+                        "ret_pct": 74.61928934010153,
+                        "acc": 73.35058214747735
+                    },
+                    "margin_5": {
+                        "retained": 678,
+                        "ret_pct": 68.83248730964468,
+                        "acc": 75.52742616033755
+                    },
+                    "margin_10": {
+                        "retained": 452,
+                        "ret_pct": 45.88832487309645,
+                        "acc": 85.01070663811564
+                    },
+                    "margin_15": {
+                        "retained": 286,
+                        "ret_pct": 29.03553299492386,
+                        "acc": 89.83050847457628
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "04",
+            "timestamp": "0907_1112",
+            "action": "train",
+            "model_file": "model_04_train.pth",
+            "metrics": {
+                "best_test_acc": 80.71,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 963,
+                        "ret_pct": 97.76649746192894,
+                        "acc": 76.80722891566265
+                    },
+                    "margin_1": {
+                        "retained": 927,
+                        "ret_pct": 94.11167512690355,
+                        "acc": 77.97494780793319
+                    },
+                    "margin_2": {
+                        "retained": 848,
+                        "ret_pct": 86.09137055837563,
+                        "acc": 80.91428571428571
+                    },
+                    "margin_3": {
+                        "retained": 785,
+                        "ret_pct": 79.69543147208121,
+                        "acc": 82.75434243176178
+                    },
+                    "margin_4": {
+                        "retained": 723,
+                        "ret_pct": 73.40101522842639,
+                        "acc": 84.88529014844805
+                    },
+                    "margin_5": {
+                        "retained": 659,
+                        "ret_pct": 66.90355329949239,
+                        "acc": 86.79525222551929
+                    },
+                    "margin_10": {
+                        "retained": 388,
+                        "ret_pct": 39.390862944162436,
+                        "acc": 93.09462915601023
+                    },
+                    "margin_15": {
+                        "retained": 170,
+                        "ret_pct": 17.258883248730964,
+                        "acc": 98.24561403508771
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "05",
+            "timestamp": "0907_1113",
+            "action": "train",
+            "model_file": "model_05_train.pth",
+            "metrics": {
+                "best_test_acc": 81.22,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 971,
+                        "ret_pct": 98.57868020304569,
+                        "acc": 76.88492063492063
+                    },
+                    "margin_1": {
+                        "retained": 937,
+                        "ret_pct": 95.12690355329948,
+                        "acc": 77.46913580246914
+                    },
+                    "margin_2": {
+                        "retained": 872,
+                        "ret_pct": 88.52791878172589,
+                        "acc": 80.48780487804879
+                    },
+                    "margin_3": {
+                        "retained": 813,
+                        "ret_pct": 82.53807106598985,
+                        "acc": 82.24076281287248
+                    },
+                    "margin_4": {
+                        "retained": 745,
+                        "ret_pct": 75.63451776649747,
+                        "acc": 84.28571428571429
+                    },
+                    "margin_5": {
+                        "retained": 690,
+                        "ret_pct": 70.05076142131979,
+                        "acc": 86.76056338028168
+                    },
+                    "margin_10": {
+                        "retained": 407,
+                        "ret_pct": 41.31979695431472,
+                        "acc": 94.68599033816425
+                    },
+                    "margin_15": {
+                        "retained": 190,
+                        "ret_pct": 19.289340101522843,
+                        "acc": 98.42931937172776
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "06",
+            "timestamp": "0907_1153",
+            "action": "train",
+            "model_file": "model_06_train.pth",
+            "metrics": {
+                "best_test_acc": 78.68,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 981,
+                        "ret_pct": 99.59390862944163,
+                        "acc": 72.70058708414872
+                    },
+                    "margin_1": {
+                        "retained": 936,
+                        "ret_pct": 95.0253807106599,
+                        "acc": 74.43298969072166
+                    },
+                    "margin_2": {
+                        "retained": 870,
+                        "ret_pct": 88.3248730964467,
+                        "acc": 76.1640798226164
+                    },
+                    "margin_3": {
+                        "retained": 801,
+                        "ret_pct": 81.31979695431471,
+                        "acc": 78.67469879518072
+                    },
+                    "margin_4": {
+                        "retained": 731,
+                        "ret_pct": 74.21319796954315,
+                        "acc": 81.16710875331566
+                    },
+                    "margin_5": {
+                        "retained": 671,
+                        "ret_pct": 68.12182741116752,
+                        "acc": 83.14121037463977
+                    },
+                    "margin_10": {
+                        "retained": 407,
+                        "ret_pct": 41.31979695431472,
+                        "acc": 91.34615384615384
+                    },
+                    "margin_15": {
+                        "retained": 200,
+                        "ret_pct": 20.304568527918782,
+                        "acc": 95.58823529411765
+                    }
+                }
+            }
+        }
+    ]
+}

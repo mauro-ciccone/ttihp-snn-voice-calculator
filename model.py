@@ -4,7 +4,7 @@ import snntorch as snn
 from snntorch import surrogate
 
 class FastSpikingNet(nn.Module):
-    def __init__(self, num_inputs=8, num_hidden=128, num_outputs=7, beta=0.88):
+    def __init__(self, num_inputs=8, num_hidden=128, num_outputs=6, beta=0.88):
         super().__init__()
         self.fc_in = nn.Linear(num_inputs, num_hidden, bias=False)
         self.fc_rec = nn.Linear(num_hidden, num_hidden, bias=False)

@@ -1,0 +1,175 @@
+{
+    "experiment_name": "40_neurons_retention",
+    "base_config": {
+        "num_inputs": 8,
+        "num_hidden": 40,
+        "num_outputs": 7,
+        "batch_size": 128,
+        "beta": 0.88,
+        "lr": 0.002
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0905_1446",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "status": "initialized_fast_snn"
+            }
+        },
+        {
+            "commit_id": "01",
+            "timestamp": "0905_1713",
+            "action": "train",
+            "model_file": "model_01_train.pth",
+            "metrics": {
+                "best_test_acc": 12.5,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 0,
+                        "ret_pct": 0.0,
+                        "acc": 0.0
+                    },
+                    "margin_1": {
+                        "retained": 0,
+                        "ret_pct": 0.0,
+                        "acc": 0.0
+                    },
+                    "margin_2": {
+                        "retained": 0,
+                        "ret_pct": 0.0,
+                        "acc": 0.0
+                    },
+                    "margin_3": {
+                        "retained": 0,
+                        "ret_pct": 0.0,
+                        "acc": 0.0
+                    },
+                    "margin_4": {
+                        "retained": 0,
+                        "ret_pct": 0.0,
+                        "acc": 0.0
+                    },
+                    "margin_5": {
+                        "retained": 0,
+                        "ret_pct": 0.0,
+                        "acc": 0.0
+                    },
+                    "margin_10": {
+                        "retained": 0,
+                        "ret_pct": 0.0,
+                        "acc": 0.0
+                    },
+                    "margin_15": {
+                        "retained": 0,
+                        "ret_pct": 0.0,
+                        "acc": 0.0
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "02",
+            "timestamp": "0905_2005",
+            "action": "train",
+            "model_file": "model_02_train.pth",
+            "metrics": {
+                "best_test_acc": 42.51,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 756,
+                        "ret_pct": 63.95939086294417,
+                        "acc": 41.785252263906855
+                    },
+                    "margin_1": {
+                        "retained": 684,
+                        "ret_pct": 57.868020304568525,
+                        "acc": 43.12320916905444
+                    },
+                    "margin_2": {
+                        "retained": 521,
+                        "ret_pct": 44.077834179357026,
+                        "acc": 46.99248120300752
+                    },
+                    "margin_3": {
+                        "retained": 396,
+                        "ret_pct": 33.50253807106599,
+                        "acc": 51.60493827160494
+                    },
+                    "margin_4": {
+                        "retained": 279,
+                        "ret_pct": 23.604060913705585,
+                        "acc": 59.79020979020979
+                    },
+                    "margin_5": {
+                        "retained": 189,
+                        "ret_pct": 15.989847715736042,
+                        "acc": 64.61538461538461
+                    },
+                    "margin_10": {
+                        "retained": 38,
+                        "ret_pct": 3.2148900169204735,
+                        "acc": 81.57894736842105
+                    },
+                    "margin_15": {
+                        "retained": 11,
+                        "ret_pct": 0.9306260575296108,
+                        "acc": 100.0
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "03",
+            "timestamp": "0905_2007",
+            "action": "train",
+            "model_file": "model_03_train.pth",
+            "metrics": {
+                "best_test_acc": 75.25,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 1168,
+                        "ret_pct": 98.81556683587141,
+                        "acc": 69.6234309623431
+                    },
+                    "margin_1": {
+                        "retained": 1098,
+                        "ret_pct": 92.89340101522842,
+                        "acc": 71.41585040071237
+                    },
+                    "margin_2": {
+                        "retained": 959,
+                        "ret_pct": 81.1336717428088,
+                        "acc": 74.87283825025432
+                    },
+                    "margin_3": {
+                        "retained": 845,
+                        "ret_pct": 71.48900169204738,
+                        "acc": 78.4971098265896
+                    },
+                    "margin_4": {
+                        "retained": 740,
+                        "ret_pct": 62.605752961082906,
+                        "acc": 81.24174372523117
+                    },
+                    "margin_5": {
+                        "retained": 649,
+                        "ret_pct": 54.90693739424704,
+                        "acc": 84.03614457831326
+                    },
+                    "margin_10": {
+                        "retained": 337,
+                        "ret_pct": 28.510998307952622,
+                        "acc": 92.71137026239067
+                    },
+                    "margin_15": {
+                        "retained": 132,
+                        "ret_pct": 11.16751269035533,
+                        "acc": 96.29629629629629
+                    }
+                }
+            }
+        }
+    ]
+}

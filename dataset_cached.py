@@ -21,34 +21,42 @@ class CachedSpikeDataset(Dataset):
         return spike_tensor, label
 
 def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
-    labels = ["drü", "eis", "minus", "plus", "vier", "zwoi", "noise", "silence"]
+    # We removed "minus" from the unique labels list so it isn't assigned an output ID
+    labels = ["drü", "eis", "plus", "vier", "zwoi", "noise", "silence"]
     labels_map = {lbl: i for i, lbl in enumerate(labels)}
+    
+    # Force the string "minus" to map directly to the "noise" index
+    labels_map["minus"] = labels_map["noise"]
     
     temp_train = {lbl: [] for lbl in labels}
     temp_test = {lbl: [] for lbl in labels}
     
+    folder_names = ["drü", "eis", "minus", "plus", "vier", "zwoi", "noise", "silence"]
+    
     # --- PASS 1: Gather all files and separate Test vs Train ---
-    for lbl in labels:
-        lbl_dir = os.path.join(cache_dir, lbl)
+    for folder in folder_names:
+        lbl_dir = os.path.join(cache_dir, folder)
         files = [f for f in os.listdir(lbl_dir) if f.endswith(".pt")]
         
-        if lbl in ["noise", "silence"]:
+        target_label = folder if folder != "minus" else "noise"
+        
+        if folder in ["noise", "silence", "minus"]:
             random.shuffle(files)
             # Ambient has no augmentations. Reserve 20% for testing.
             split_idx = int(len(files) * 0.2)
-            temp_test[lbl] = [(os.path.join(lbl_dir, f), lbl) for f in files[:split_idx]]
-            temp_train[lbl] = [(os.path.join(lbl_dir, f), lbl) for f in files[split_idx:]]
+            temp_test[target_label].extend([(os.path.join(lbl_dir, f), folder) for f in files[:split_idx]])
+            temp_train[target_label].extend([(os.path.join(lbl_dir, f), folder) for f in files[split_idx:]])
         else:
             # STRICT LEAKAGE PREVENTION: Only raw audio (_aug0) in Test
-            temp_test[lbl] = [(os.path.join(lbl_dir, f), lbl) for f in files if f.endswith("_aug0.pt")]
-            temp_train[lbl] = [(os.path.join(lbl_dir, f), lbl) for f in files if not f.endswith("_aug0.pt")]
+            temp_test[target_label].extend([(os.path.join(lbl_dir, f), folder) for f in files if f.endswith("_aug0.pt")])
+            temp_train[target_label].extend([(os.path.join(lbl_dir, f), folder) for f in files if not f.endswith("_aug0.pt")])
             
     # --- PASS 2: Dynamic Capping for perfect Test Balance ---
     min_test_count = min(len(items) for items in temp_test.values())
     print(f"Dynamically capping Test Set at {min_test_count} samples per class.")
     
     # Find the largest keyword class to define our ideal epoch size
-    keyword_labels = ["drü", "eis", "minus", "plus", "vier", "zwoi"]
+    keyword_labels = ["drü", "eis", "plus", "vier", "zwoi"]
     max_keyword_train = max(len(temp_train[lbl]) for lbl in keyword_labels)
     
     train_files, test_files = [], []

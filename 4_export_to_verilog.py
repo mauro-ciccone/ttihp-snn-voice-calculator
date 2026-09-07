@@ -28,6 +28,10 @@ def generate_verilog(model, filename="tt_um_snn_hardwired.v"):
     w_out = model.fc_out.weight.data.cpu().numpy().astype(int)
     th_hid = int(model.lif_hidden.threshold.item())
     th_out = int(model.lif_out.threshold.item())
+
+    # Helper to format negative Verilog numbers correctly
+    def v_const(val):
+        return f"-16'sd{abs(val)}" if val < 0 else f"16'sd{val}"
     
     with open(filename, "w") as f:
         f.write("`default_nettype none\n\n")
@@ -59,19 +63,15 @@ def generate_verilog(model, filename="tt_um_snn_hardwired.v"):
         for i in range(6):  f.write(f"            out_mem_{i} <= 0;\n")
         f.write("        end else begin\n")
         
-        # Hidden Layer
         f.write("            // --- HIDDEN LAYER ALUs ---\n")
         for i in range(40):
-            # Leak: V = V - (V >> 3)
             f.write(f"            hid_mem_{i} <= hid_mem_{i} - (hid_mem_{i} >>> 3)")
-            # Add Inputs
             for j in range(8):
                 if w_in[i, j] != 0:
-                    f.write(f" + (ui_in[{j}] ? 16'sd{w_in[i, j]} : 0)")
-            # Add Recurrent
+                    f.write(f" + (ui_in[{j}] ? {v_const(w_in[i, j])} : 0)")
             for j in range(40):
                 if w_rec[i, j] != 0:
-                    f.write(f" + (hid_spikes[{j}] ? 16'sd{w_rec[i, j]} : 0)")
+                    f.write(f" + (hid_spikes[{j}] ? {v_const(w_rec[i, j])} : 0)")
             f.write(";\n")
             
         f.write("\n            // Hidden Spiking Logic\n")
@@ -89,7 +89,7 @@ def generate_verilog(model, filename="tt_um_snn_hardwired.v"):
             f.write(f"            out_mem_{i} <= out_mem_{i} - (out_mem_{i} >>> 3)")
             for j in range(40):
                 if w_out[i, j] != 0:
-                    f.write(f" + (hid_spikes[{j}] ? 16'sd{w_out[i, j]} : 0)")
+                    f.write(f" + (hid_spikes[{j}] ? {v_const(w_out[i, j])} : 0)")
             f.write(";\n")
             
         f.write("\n            // Output Spiking Logic\n")

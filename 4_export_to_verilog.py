@@ -6,20 +6,41 @@ from utils_ledger import load_ledger
 
 TARGET_FOLDER = "experiments/0906_2022_without_minus"
 
-def quantize_to_8bit(model):
+def quantize_to_8bit(model, prune_margin=30): # MASSIVE PRUNE: Delete any weight between -30 and +30
     q_model = copy.deepcopy(model)
     max_int = 127.0 
     with torch.no_grad():
+        # Hidden Layer
         flat_hidden = torch.cat([q_model.fc_in.weight.data.flatten(), q_model.fc_rec.weight.data.flatten()]).abs()
         scale_in = max_int / torch.quantile(flat_hidden, 0.9815) 
         q_model.fc_in.weight.data = torch.clamp(torch.round(q_model.fc_in.weight.data * scale_in), min=-max_int, max=max_int)
         q_model.fc_rec.weight.data = torch.clamp(torch.round(q_model.fc_rec.weight.data * scale_in), min=-max_int, max=max_int)
+        
+        # Prune Hidden
+        q_model.fc_in.weight.data[q_model.fc_in.weight.data.abs() < prune_margin] = 0
+        q_model.fc_rec.weight.data[q_model.fc_rec.weight.data.abs() < prune_margin] = 0
         q_model.lif_hidden.threshold.data = q_model.lif_hidden.threshold.data * scale_in
         
+        # Output Layer
         flat_out = q_model.fc_out.weight.data.abs().flatten()
         scale_out = max_int / torch.quantile(flat_out, 0.9815)
         q_model.fc_out.weight.data = torch.clamp(torch.round(q_model.fc_out.weight.data * scale_out), min=-max_int, max=max_int)
+        
+        # Prune Output
+        q_model.fc_out.weight.data[q_model.fc_out.weight.data.abs() < prune_margin] = 0
         q_model.lif_out.threshold.data = q_model.lif_out.threshold.data * scale_out
+
+        # --- SILICON PRUNING REPORT ---
+        total_w = 320 + 1600 + 240
+        surviving_w = int((q_model.fc_in.weight.data != 0).sum() + 
+                          (q_model.fc_rec.weight.data != 0).sum() + 
+                          (q_model.fc_out.weight.data != 0).sum())
+        
+        print(f"\n--- FAIL-FAST SILICON CHECK ---")
+        print(f"Margin: {prune_margin}")
+        print(f"Surviving Weights (Adders): {surviving_w} / {total_w} ({(surviving_w/total_w)*100:.1f}%)")
+        print(f"Deleted Wires: {total_w - surviving_w}\n")
+
     return q_model
 
 def generate_fsm_verilog(model, filename="tt_um_snn_fsm.v"):

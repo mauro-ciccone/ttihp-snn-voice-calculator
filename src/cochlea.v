@@ -20,17 +20,17 @@ module cochlea (
     // PDM pulse value: 1.0 * 1024 = 1024
     wire [15:0] pdm_val = pdm_in ? 16'd1024 : 16'd0;
 
-    // --- PURE SHIFT-SUBTRACTOR LEAKAGE (Zero Multipliers) ---
+    // --- HIGH PRECISION CSD SHIFT-SUBTRACTORS ---
     wire [15:0] next_v_0 = mem_0 - (mem_0 >> 2) + pdm_val;
-    wire [15:0] next_v_1 = mem_1 - (mem_1 >> 2) + (mem_1 >> 4) + pdm_val;
-    wire [15:0] next_v_2 = mem_2 - (mem_2 >> 3) - (mem_2 >> 5) + pdm_val;
-    wire [15:0] next_v_3 = mem_3 - (mem_3 >> 3) + (mem_3 >> 5) + pdm_val;
-    wire [15:0] next_v_4 = mem_4 - (mem_4 >> 5) - (mem_4 >> 6) + pdm_val;
-    wire [15:0] next_v_5 = mem_5 - (mem_5 >> 5) + pdm_val;
-    wire [15:0] next_v_6 = mem_6 - (mem_6 >> 6) + pdm_val;
-    wire [15:0] next_v_7 = mem_7 - (mem_7 >> 7) + pdm_val;
+    wire [15:0] next_v_1 = mem_1 - (mem_1 >> 2) + (mem_1 >> 4) - (mem_1 >> 6) + (mem_1 >> 8) - (mem_1 >> 10) + pdm_val;
+    wire [15:0] next_v_2 = mem_2 - (mem_2 >> 3) - (mem_2 >> 6) - (mem_2 >> 7) - (mem_2 >> 9) + pdm_val;
+    wire [15:0] next_v_3 = mem_3 - (mem_3 >> 3) + (mem_3 >> 5) - (mem_3 >> 7) + (mem_3 >> 9) + pdm_val;
+    wire [15:0] next_v_4 = mem_4 - (mem_4 >> 4) + (mem_4 >> 6) - (mem_4 >> 8) + (mem_4 >> 10) + pdm_val;
+    wire [15:0] next_v_5 = mem_5 - (mem_5 >> 5) + (mem_5 >> 10) + pdm_val;
+    wire [15:0] next_v_6 = mem_6 - (mem_6 >> 6) - (mem_6 >> 8) + pdm_val;
+    wire [15:0] next_v_7 = mem_7 - (mem_7 >> 7) - (mem_7 >> 9) + pdm_val;
 
-    // --- THRESHOLD COMPARATORS (Threshold * 1024) ---
+    // --- EXACT THRESHOLD COMPARATORS (Threshold * 1024) ---
     wire fired_0 = (next_v_0 >= 16'd2785);
     wire fired_1 = (next_v_1 >= 16'd3313);
     wire fired_2 = (next_v_2 >= 16'd4183);

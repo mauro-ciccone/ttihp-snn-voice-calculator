@@ -6,7 +6,7 @@ from utils_ledger import load_ledger
 
 TARGET_FOLDER = "experiments/0906_2022_without_minus"
 
-def quantize_to_8bit(model, prune_margin=30): # MASSIVE PRUNE: Delete any weight between -30 and +30
+def quantize_to_8bit(model, prune_margin=35): # MASSIVE PRUNE: Delete any weight between -30 and +30
     q_model = copy.deepcopy(model)
     max_int = 127.0 
     with torch.no_grad():

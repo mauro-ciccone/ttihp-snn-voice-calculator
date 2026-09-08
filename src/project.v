@@ -16,20 +16,21 @@ module tt_um_example (
     input  wire       rst_n     // reset_n - low to reset
 );
 
-  // All output pins must be assigned. If not used, assign to 0.
-  assign uio_out = 0;
-  assign uio_oe  = 0;
+  wire tick_1ms_wire;
 
-  // List all unused inputs to prevent warnings
-  wire _unused = &{ena, uio_in, 1'b0};
+    // Configure uio_out[0] as output for the 1ms tick
+    assign uio_out = {7'b0000000, tick_1ms_wire};
+    assign uio_oe  = 8'b00000001;
 
-  // Instantiate the massive 46-neuron SNN
-    tt_um_snn_fsm snn_core (
-        .ui_in(ui_in),
-        .uo_out(uo_out),
+    wire _unused = &{ena, ui_in[7:1], uio_in, 1'b0};
+
+    // Instantiate Standalone Silicon Cochlea
+    cochlea cochlea_inst (
         .clk(clk),
         .rst_n(rst_n),
-        .tick_1ms(uio_in[0])
+        .pdm_in(ui_in[0]),
+        .spikes_out(uo_out),
+        .tick_1ms(tick_1ms_wire)
     );
 
 endmodule

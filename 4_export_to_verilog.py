@@ -15,7 +15,7 @@ def snap_beta_to_shift(beta_float):
     return best_shift
 
 def v_const(val): 
-    return f"-10'sd{abs(val)}" if val < 0 else f"10'sd{val}"
+    return f"-9'sd{abs(val)}" if val < 0 else f"9'sd{val}"
 
 def main():
     ledger = load_ledger(TARGET_FOLDER)
@@ -84,11 +84,11 @@ def main():
         f"    reg signed [9:0] mem [0:{config['num_hidden'] + config['num_outputs'] - 1}];",
         f"    reg [{config['num_hidden']-1}:0] hid_spikes;",
         "",
-        "    // --- 10-BIT COMPACT ALU CONTROL ---",
+        "    // --- 9-BIT COMPACT ALU CONTROL ---",
         "    reg [4:0] alu_tgt;",
         "    reg [4:0] alu_src;",
         "    reg alu_is_hid_src;",
-        "    reg signed [9:0] alu_w;",
+        "    reg signed [8:0] alu_w;", # Shrunk to 9-bit
         "    reg [2:0] alu_shift;",
         "    reg alu_is_leak, alu_is_syn, alu_is_thresh;",
         "",
@@ -126,7 +126,7 @@ def main():
         "",
         "    // Single external spike multiplexer",
         "    wire spike_active = alu_is_hid_src ? hid_spikes[alu_src] : in_spikes[alu_src[2:0]];",
-        "    wire signed [9:0] current_v = mem[alu_tgt];",
+        "    wire signed [8:0] current_v = mem[alu_tgt];",
         f"    wire signed [9:0] thresh_val = (alu_tgt < 24) ? 10'sd{thresh_hid} : 10'sd{thresh_out};",
         "    wire is_spike = (current_v >= thresh_val);",
         "",

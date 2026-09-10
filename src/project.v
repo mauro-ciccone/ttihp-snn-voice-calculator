@@ -3,7 +3,7 @@
 module tt_um_example #(
     // Adjust this number to test placement limits!
     // e.g., 500, 750, 1000, 1200, 1500
-    parameter integer NUM_BITS = 1000
+    parameter integer NUM_BITS = 1200
 ) (
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs

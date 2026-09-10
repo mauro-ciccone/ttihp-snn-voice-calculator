@@ -11,22 +11,25 @@ module tt_um_example (
     input  wire       rst_n     
 );
 
-    wire tick_1ms_wire;
-    wire [6:0] cochlea_spikes;
+    // Map input pins directly to SNN inputs
+    wire [6:0] fake_cochlea_spikes = ui_in[6:0];
+    wire       fake_tick_1ms       = ui_in[7];
+    
+    wire [4:0] snn_class_spikes;
 
-    // Route cochlea directly to output pins so it doesn't get optimized away
-    assign uo_out  = {1'b0, cochlea_spikes};
-    assign uio_out = {7'b0, tick_1ms_wire};
-    assign uio_oe  = 8'hFF;
+    // Route output to pins
+    assign uo_out  = {3'b0, snn_class_spikes};
+    assign uio_out = 8'b0;
+    assign uio_oe  = 8'b0;
 
-    wire _unused = &{ena, ui_in[7:1], uio_in, 1'b0};
+    wire _unused = &{ena, uio_in, 1'b0};
 
-    cochlea cochlea_inst (
+    snn_core snn_inst (
         .clk        (clk),
         .rst_n      (rst_n),
-        .pdm_in     (ui_in[0]),
-        .spikes_out (cochlea_spikes),
-        .tick_1ms   (tick_1ms_wire)
+        .tick_1ms   (fake_tick_1ms),
+        .in_spikes  (fake_cochlea_spikes),
+        .out_spikes (snn_class_spikes)
     );
 
 endmodule

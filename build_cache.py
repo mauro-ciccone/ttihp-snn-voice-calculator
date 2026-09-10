@@ -22,8 +22,8 @@ WINDOW_TICKS = MIC_MHZ // SNN_CLOCK_HZ
 # Ch 5: 0.9766 [V - (V>>5) + (V>>7)]           | Thresh: V >= 16'd22784
 # Ch 6: 0.9912 [V - (V>>7) - (V>>10)]          | Thresh: V >= 16'd59392
 
-BETAS = torch.tensor([0.8809, 0.9297, 0.9512, 0.9600, 0.9746, 0.9766, 0.9912])
-THRESHOLDS = torch.tensor([5.00, 8.00, 11.00, 13.25, 20.50, 22.25, 58.00])
+BETAS = torch.tensor([0.8125, 0.8809, 0.9297, 0.9512, 0.9600, 0.9746, 0.9766, 0.9912])
+THRESHOLDS = torch.tensor([3.5, 5.00, 8.00, 11.00, 13.25, 20.50, 22.25, 58.00])
 TRAIN_MULTIPLIER = 10  
 
 def _augment(waveform):
@@ -48,11 +48,11 @@ def simulate_silicon_cochlea(waveform, device):
     # Reshape for the SNN clock domains[cite: 1]
     pdm_windows = pdm_bits.to(device).view(SNN_CLOCK_HZ, WINDOW_TICKS).unsqueeze(-1)
     
-    betas = BETAS.to(device).view(1, 7)
-    v_ths = THRESHOLDS.to(device).view(1, 7)
+    betas = BETAS.to(device).view(1, 8)
+    v_ths = THRESHOLDS.to(device).view(1, 8)
     
-    mem = torch.zeros(SNN_CLOCK_HZ, 7, device=device)
-    sticky_latches = torch.zeros(SNN_CLOCK_HZ, 7, dtype=torch.bool, device=device)
+    mem = torch.zeros(SNN_CLOCK_HZ, 8, device=device)
+    sticky_latches = torch.zeros(SNN_CLOCK_HZ, 8, dtype=torch.bool, device=device)
     
     # Hardware Integrator Array (The Silicon)[cite: 1]
     for t in range(WINDOW_TICKS):

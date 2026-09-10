@@ -4,7 +4,7 @@ from model import FastSpikingNet
 from utils_ledger import load_ledger
 
 TARGET_FOLDER = "experiments/0910_1301_24_neurons"
-PRUNE_MARGIN = 32  # Clean cutoff to shed boundary weights
+PRUNE_MARGIN = 40  # Clean cutoff to shed boundary weights
 
 def snap_beta_to_shift(beta_float):
     best_diff, best_shift = float("inf"), 1
@@ -80,7 +80,7 @@ def main():
         f"    output reg  [{config['num_outputs']-1}:0] out_spikes",
         ");",
         "",
-        "    reg [9:0] state;",
+        "    reg [8:0] state;  // SHRUNK TO 9 BITS to dramatically reduce fanout logic",
         f"    reg signed [9:0] mem [0:{config['num_hidden'] + config['num_outputs'] - 1}];",
         f"    reg [{config['num_hidden']-1}:0] hid_spikes;",
         "",
@@ -96,7 +96,7 @@ def main():
         "        alu_tgt = 5'd0; alu_src = 5'd0; alu_is_hid_src = 1'b0; alu_w = 10'sd0;",
         "        alu_shift = 3'd1; alu_is_leak = 1'b0; alu_is_syn = 1'b0; alu_is_thresh = 1'b0;",
         "",
-        "        if (state < 10'd29) begin",
+        "        if (state < 9'd29) begin",
         "            alu_is_leak = 1'b1;",
         "            alu_tgt = state[4:0];",
         "            case(state)"
@@ -104,21 +104,21 @@ def main():
 
     for i in range(29):
         s = h_shifts[i] if i < 24 else o_shifts[i-24]
-        v.append(f"                10'd{i}: alu_shift = 3'd{s};")
+        v.append(f"                9'd{i}: alu_shift = 3'd{s};")
 
     v.extend([
         "            endcase",
-        f"        end else if (state < 10'd{29 + NUM_SYN}) begin",
+        f"        end else if (state < 9'd{29 + NUM_SYN}) begin",
         "            alu_is_syn = 1'b1;",
         "            case(state)"
     ])
 
     for i, (is_hid, src, tgt, w) in enumerate(synapses):
-        v.append(f"                10'd{29 + i}: begin alu_tgt = 5'd{tgt}; alu_src = 5'd{src}; alu_is_hid_src = 1'b{is_hid}; alu_w = {v_const(w)}; end")
+        v.append(f"                9'd{29 + i}: begin alu_tgt = 5'd{tgt}; alu_src = 5'd{src}; alu_is_hid_src = 1'b{is_hid}; alu_w = {v_const(w)}; end")
 
     v.extend([
         "            endcase",
-        f"        end else if (state < 10'd{58 + NUM_SYN}) begin",
+        f"        end else if (state < 9'd{58 + NUM_SYN}) begin",
         "            alu_is_thresh = 1'b1;",
         f"            alu_tgt = state[4:0] - 5'd{((29 + NUM_SYN) % 32)};",
         "        end",
@@ -133,13 +133,13 @@ def main():
         "    integer i;",
         "    always @(posedge clk or negedge rst_n) begin",
         "        if (!rst_n) begin",
-        "            state <= 10'h3FF;",
+        "            state <= 9'h1FF;",
         f"            hid_spikes <= {config['num_hidden']}'d0;",
         f"            out_spikes <= {config['num_outputs']}'d0;",
         f"            for (i = 0; i < {config['num_hidden'] + config['num_outputs']}; i = i + 1) mem[i] <= 10'sd0;",
         "        end else if (tick_1ms) begin",
-        "            state <= 10'd0;",
-        "        end else if (state != 10'h3FF) begin",
+        "            state <= 9'd0;",
+        "        end else if (state != 9'h1FF) begin",
         "            if (alu_is_leak) mem[alu_tgt] <= current_v - (current_v >>> alu_shift);",
         "            else if (alu_is_thresh) begin",
         "                mem[alu_tgt] <= is_spike ? 10'sd0 : current_v;",
@@ -149,8 +149,8 @@ def main():
         "                mem[alu_tgt] <= current_v + alu_w;",
         "            end",
         "",
-        f"            if (state == 10'd{57 + NUM_SYN}) state <= 10'h3FF;",
-        "            else state <= state + 10'd1;",
+        f"            if (state == 9'd{57 + NUM_SYN}) state <= 9'h1FF;",
+        "            else state <= state + 9'd1;",
         "        end",
         "    end",
         "endmodule"

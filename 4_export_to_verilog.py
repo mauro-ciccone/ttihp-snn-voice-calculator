@@ -14,9 +14,6 @@ def snap_beta_to_shift(beta_float):
             best_diff, best_shift = diff, k
     return best_shift
 
-def v_const(val): 
-    return f"-16'sd{abs(val)}" if val < 0 else f"16'sd{val}"
-
 def main():
     ledger = load_ledger(TARGET_FOLDER)
     config = ledger["base_config"]
@@ -70,7 +67,36 @@ def main():
         h_shifts = [snap_beta_to_shift(b.item()) for b in hidden_betas]
         o_shifts = [snap_beta_to_shift(b.item()) for b in out_betas]
 
-    # Generate FSM Verilog
+    # Collect sparse connections: list of tuples (target_type, target_idx, source_type, source_idx, weight)
+    # target_type: 0 = hidden, 1 = output
+    # source_type: 0 = input, 1 = hidden
+    sparse_connections = []
+    
+    # Hidden incoming from inputs
+    for h in range(config['num_hidden']):
+        for i in range(config['num_inputs']):
+            wt = w_in[h, i]
+            if wt != 0:
+                sparse_connections.append((0, h, 0, i, int(wt)))
+                
+    # Hidden incoming from hidden (recurrent)
+    for h in range(config['num_hidden']):
+        for prev_h in range(config['num_hidden']):
+            wt = w_rec[h, prev_h]
+            if wt != 0:
+                sparse_connections.append((0, h, 1, prev_h, int(wt)))
+                
+    # Output incoming from hidden
+    for o in range(config['num_outputs']):
+        for h in range(config['num_hidden']):
+            wt = w_out[o, h]
+            if wt != 0:
+                sparse_connections.append((1, o, 1, h, int(wt)))
+
+    num_synapses = len(sparse_connections)
+    print(f"Total surviving sparse synapses to serialize: {num_synapses}")
+
+    # Generate Sparse ROM FSM Verilog
     v = []
     v.append("`default_nettype none")
     v.append("module snn_core (")
@@ -81,82 +107,160 @@ def main():
     v.append(f"    output reg  [{config['num_outputs']-1}:0] out_spikes")
     v.append(");")
     v.append("")
-    v.append("    reg [4:0] state; // 0-23: Hidden, 24-28: Output, 31: Idle")
-    v.append(f"    reg signed [15:0] mem [0:{config['num_hidden'] + config['num_outputs'] - 1}];")
+    v.append("    // State machine and counters")
+    v.append("    reg [2:0] state; // 0: Idle, 1: Leak/Reset, 2: Sparse Synapse Accumulation")
+    v.append("    reg [4:0] neuron_ptr; // 0 to 28")
+    v.append(f"    reg [9:0] syn_ptr;    // 0 to {num_synapses - 1}")
+    v.append("")
+    v.append("    // Latched inputs for the 1ms frame")
+    v.append(f"    reg [{config['num_inputs']-1}:0] latched_in_spikes;")
     v.append(f"    reg [{config['num_hidden']-1}:0] hid_spikes;")
+    v.append(f"    reg [{config['num_outputs']-1}:0] latched_out_spikes;")
     v.append("")
-    v.append("    wire signed [15:0] current_v = mem[state];")
-    v.append("    reg [2:0] current_shift;")
-    v.append("    reg signed [15:0] weight_sum;")
-    v.append("    wire signed [15:0] leaked_v = current_v - (current_v >>> current_shift);")
-    v.append("    wire signed [15:0] next_v = leaked_v + weight_sum;")
-    v.append(f"    wire signed [15:0] active_thresh = (state < {config['num_hidden']}) ? 16'sd{thresh_hid} : 16'sd{thresh_out};")
-    v.append("    wire is_spike = (next_v >= active_thresh);")
+    v.append("    // Membrane memory for all 29 neurons (24 hidden + 5 output)")
+    v.append("    reg signed [15:0] mem [0:28];")
     v.append("")
-    
-    # Combinational MUX for shifts and weights
+    v.append("    // Single shared adder infrastructure")
+    v.append("    reg signed [15:0] adder_a;")
+    v.append("    reg signed [15:0] adder_b;")
+    v.append("    wire signed [15:0] adder_sum = adder_a + adder_b;")
+    v.append("")
+    v.append("    // Unpacked fields for current ROM entry")
+    v.append("    reg         rom_target_type;")
+    v.append("    reg [4:0]   rom_target_idx;")
+    v.append("    reg         rom_source_type;")
+    v.append("    reg [4:0]   rom_source_idx;")
+    v.append("    reg signed [15:0] rom_weight;")
+    v.append("")
+
+    # Sparse ROM Lookup Table via Combinational Logic
     v.append("    always @(*) begin")
-    v.append("        weight_sum = 16'sd0;")
-    v.append("        current_shift = 3'd1;")
-    v.append("        case (state)")
+    v.append("        rom_target_type = 1'b0;")
+    v.append("        rom_target_idx  = 5'd0;")
+    v.append("        rom_source_type = 1'b0;")
+    v.append("        rom_source_idx  = 5'd0;")
+    v.append("        rom_weight      = 16'sd0;")
+    v.append("        case (syn_ptr)")
     
-    for n in range(config['num_hidden']):
-        v.append(f"            5'd{n}: begin")
-        v.append(f"                current_shift = 3'd{h_shifts[n]};")
-        terms = []
-        for inp in range(config["num_inputs"]):
-            if w_in[n, inp] != 0: terms.append(f"(in_spikes[{inp}] ? {v_const(w_in[n, inp])} : 16'sd0)")
-        for rec in range(config["num_hidden"]):
-            if w_rec[n, rec] != 0: terms.append(f"(hid_spikes[{rec}] ? {v_const(w_rec[n, rec])} : 16'sd0)")
-        if not terms: terms = ["16'sd0"]
-        v.append(f"                weight_sum = {' + '.join(terms)};")
-        v.append("            end")
-        
-    for o in range(config['num_outputs']):
-        idx = o + config['num_hidden']
-        v.append(f"            5'd{idx}: begin")
-        v.append(f"                current_shift = 3'd{o_shifts[o]};")
-        terms = []
-        for hid in range(config["num_hidden"]):
-            if w_out[o, hid] != 0: terms.append(f"(hid_spikes[{hid}] ? {v_const(w_out[o, hid])} : 16'sd0)")
-        if not terms: terms = ["16'sd0"]
-        v.append(f"                weight_sum = {' + '.join(terms)};")
+    for idx, (t_type, t_idx, s_type, s_idx, wt) in enumerate(sparse_connections):
+        v.append(f"            10'd{idx}: begin")
+        v.append(f"                rom_target_type = 1'd{t_type};")
+        v.append(f"                rom_target_idx  = 5'd{t_idx};")
+        v.append(f"                rom_source_type = 1'd{s_type};")
+        v.append(f"                rom_source_idx  = 5'd{s_idx};")
+        wt_str = f"-16'sd{abs(wt)}" if wt < 0 else f"16'sd{wt}"
+        v.append(f"                rom_weight      = {wt_str};")
         v.append("            end")
         
     v.append("            default: begin")
-    v.append("                weight_sum = 16'sd0;")
-    v.append("                current_shift = 3'd1;")
+    v.append("                rom_target_type = 1'b0;")
+    v.append("                rom_target_idx  = 5'd0;")
+    v.append("                rom_source_type = 1'b0;")
+    v.append("                rom_source_idx  = 5'd0;")
+    v.append("                rom_weight      = 16'sd0;")
     v.append("            end")
     v.append("        endcase")
     v.append("    end")
     v.append("")
-    
-    # Sequential State Update
+
+    # Per-neuron shift lookup for leaks
+    v.append("    reg [2:0] current_shift;")
+    v.append("    always @(*) begin")
+    v.append("        case (neuron_ptr)")
+    for n in range(config['num_hidden']):
+        v.append(f"            5'd{n}: current_shift = 3'd{h_shifts[n]};")
+    for o in range(config['num_outputs']):
+        idx = o + config['num_hidden']
+        v.append(f"            5'd{idx}: current_shift = 3'd{o_shifts[o]};")
+    v.append("            default: current_shift = 3'd1;")
+    v.append("        endcase")
+    v.append("    end")
+    v.append("")
+
+    # Sequential Controller & Datapath
+    v.append("    wire signed [15:0] current_v = mem[neuron_ptr];")
+    v.append("    wire signed [15:0] leaked_v  = current_v - (current_v >>> current_shift);")
+    v.append(f"    wire signed [15:0] active_th = (neuron_ptr < 5'd{config['num_hidden']}) ? 16'sd{thresh_hid} : 16'sd{thresh_out};")
+    v.append("")
+
     v.append("    integer i;")
     v.append("    always @(posedge clk or negedge rst_n) begin")
     v.append("        if (!rst_n) begin")
-    v.append("            state <= 5'd31;")
-    v.append(f"            hid_spikes <= {config['num_hidden']}'d0;")
-    v.append(f"            out_spikes <= {config['num_outputs']}'d0;")
-    v.append(f"            for (i = 0; i < {config['num_hidden'] + config['num_outputs']}; i = i + 1) mem[i] <= 16'sd0;")
+    v.append("            state               <= 3'd0;")
+    v.append("            neuron_ptr          <= 5'd0;")
+    v.append("            syn_ptr             <= 10'd0;")
+    v.append("            latched_in_spikes   <= 7'd0;")
+    v.append("            hid_spikes          <= 24'd0;")
+    v.append("            latched_out_spikes  <= 5'd0;")
+    v.append("            out_spikes          <= 5'd0;")
+    v.append("            adder_a             <= 16'sd0;")
+    v.append("            adder_b             <= 16'sd0;")
+    v.append("            for (i = 0; i < 29; i = i + 1) mem[i] <= 16'sd0;")
     v.append("        end else begin")
-    v.append("            if (state == 5'd31) begin")
-    v.append("                if (tick_1ms) state <= 5'd0;")
-    v.append(f"            end else if (state < 5'd{config['num_hidden'] + config['num_outputs']}) begin")
-    v.append("                mem[state] <= is_spike ? 16'sd0 : next_v;")
-    v.append(f"                if (state < 5'd{config['num_hidden']}) hid_spikes[state] <= is_spike;")
-    v.append(f"                else out_spikes[state - 5'd{config['num_hidden']}] <= is_spike;")
+    v.append("            case (state)")
+    v.append("                3'd0: begin // IDLE waiting for 1ms tick")
+    v.append("                    if (tick_1ms) begin")
+    v.append("                        latched_in_spikes <= in_spikes;")
+    v.append("                        hid_spikes        <= 24'd0; // clear transient spikes for new window")
+    v.append("                        neuron_ptr        <= 5'd0;")
+    v.append("                        state             <= 3'd1;  // Move to Phase 1: Leak & Threshold")
+    v.append("                    end")
+    v.append("                end")
     v.append("")
-    v.append(f"                if (state == 5'd{config['num_hidden'] + config['num_outputs'] - 1}) state <= 5'd31;")
-    v.append("                else state <= state + 1;")
-    v.append("            end")
+    v.append("                3'd1: begin // PHASE 1: Apply leak, check threshold for all 29 neurons")
+    v.append(f"                    if (current_v >= active_th) begin")
+    v.append("                        mem[neuron_ptr] <= 16'sd0; // Spike reset")
+    v.append(f"                        if (neuron_ptr < 5'd{config['num_hidden']})")
+    v.append("                            hid_spikes[neuron_ptr] <= 1'b1;")
+    v.append("                        else")
+    v.append("                            latched_out_spikes[neuron_ptr - 5'd24] <= 1'b1;")
+    v.append("                    end else begin")
+    v.append("                        mem[neuron_ptr] <= leaked_v;")
+    v.append("                    end")
+    v.append("")
+    v.append("                    if (neuron_ptr == 5'd28) begin")
+    v.append("                        syn_ptr <= 10'd0;")
+    v.append("                        state   <= 3'd2; // Move to Phase 2: Sparse Synapse Accumulation")
+    v.append("                    end else begin")
+    v.append("                        neuron_ptr <= neuron_ptr + 5'd1;")
+    v.append("                    end")
+    v.append("                end")
+    v.append("")
+    v.append("                3'd2: begin // PHASE 2: Stream through surviving sparse synapses")
+    v.append("                    // Check if source spiked")
+    v.append("                    if (rom_source_type == 1'b0) begin")
+    v.append("                        if (latched_in_spikes[rom_source_idx]) begin")
+    v.append("                            // Add weight to target membrane")
+    v.append("                            // Actual target index in mem: if target_type==1, offset by 24")
+    v.append("                            reg [4:0] actual_target = rom_target_type ? (rom_target_idx + 5'd24) : rom_target_idx;")
+    v.append("                            mem[actual_target] <= mem[actual_target] + rom_weight;")
+    v.append("                        end")
+    v.append("                    end else begin")
+    v.append("                        if (hid_spikes[rom_source_idx]) begin")
+    v.append("                            reg [4:0] actual_target = rom_target_type ? (rom_target_idx + 5'd24) : rom_target_idx;")
+    v.append("                            mem[actual_target] <= mem[actual_target] + rom_weight;")
+    v.append("                        end")
+    v.append("                    end")
+    v.append("")
+    v.append(f"                    if (syn_ptr == 10'd{num_synapses - 1}) begin")
+    v.append("                        out_spikes <= latched_out_spikes;")
+    v.append("                        latched_out_spikes <= 5'd0;")
+    v.append("                        state <= 3'd0; // Return to Idle")
+    v.append("                    end else begin")
+    v.append("                        syn_ptr <= syn_ptr + 10'd1;")
+    v.append("                    end")
+    v.append("                end")
+    v.append("")
+    v.append("                default: state <= 3'd0;")
+    v.append("            endcase")
     v.append("        end")
     v.append("    end")
     v.append("endmodule")
+    v.append("")
     
     with open("snn_core.v", "w") as f:
         f.write("\n".join(v))
-    print("Generated FSM-based snn_core.v")
+    print("Successfully generated sparse ROM FSM snn_core.v")
 
 if __name__ == "__main__":
     main()

@@ -21,17 +21,18 @@ class CachedSpikeDataset(Dataset):
         return spike_tensor, label
 
 def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
-    # We removed "minus" from the unique labels list so it isn't assigned an output ID
-    labels = ["drü", "eis", "plus", "vier", "zwoi", "noise", "silence"]
+    # Removed 'minus' and 'plus' for the 5-class V2 Architecture
+    labels = ["drü", "eis", "vier", "zwoi", "noise", "silence"]
     labels_map = {lbl: i for i, lbl in enumerate(labels)}
     
-    # Force the string "minus" to map directly to the "noise" index
+    # Map missing classes directly to noise
     labels_map["minus"] = labels_map["noise"]
+    labels_map["plus"] = labels_map["noise"]
     
     temp_train = {lbl: [] for lbl in labels}
     temp_test = {lbl: [] for lbl in labels}
     
-    folder_names = ["drü", "eis", "minus", "plus", "vier", "zwoi", "noise", "silence"]
+    folder_names = ["drü", "eis", "vier", "zwoi", "noise", "silence"]
     
     # --- PASS 1: Gather all files and separate Test vs Train ---
     for folder in folder_names:
@@ -40,7 +41,7 @@ def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
         
         target_label = folder if folder != "minus" else "noise"
         
-        if folder in ["noise", "silence", "minus"]:
+        if folder in ["noise", "silence"]:
             random.shuffle(files)
             # Ambient has no augmentations. Reserve 20% for testing.
             split_idx = int(len(files) * 0.2)
@@ -56,7 +57,7 @@ def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
     print(f"Dynamically capping Test Set at {min_test_count} samples per class.")
     
     # Find the largest keyword class to define our ideal epoch size
-    keyword_labels = ["drü", "eis", "plus", "vier", "zwoi"]
+    keyword_labels = ["drü", "eis", "vier", "zwoi"]
     max_keyword_train = max(len(temp_train[lbl]) for lbl in keyword_labels)
     
     train_files, test_files = [], []

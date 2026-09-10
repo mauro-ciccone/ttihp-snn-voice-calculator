@@ -5,11 +5,11 @@ from model import FastSpikingNet
 from utils_ledger import create_ledger, append_commit
 
 # --- INITIALIZATION CONFIG ---
-EXP_NAME = "without_minus"
+EXP_NAME = "24_neurons"
 BASE_CONFIG = {
-    "num_inputs": 8,           # 8 hardware LIF channels (formerly n_mels)
-    "num_hidden": 40,         # Hidden recurrent neurons
-    "num_outputs": 6,          # 7 keyword classes
+    "num_inputs": 7,           # 7 hardware LIF channels
+    "num_hidden": 24,         # Hidden recurrent neurons
+    "num_outputs": 5,          # 4 keyword classes + noise
     "batch_size": 128,
     "beta": 0.88,              # Hidden layer leak rate
     "lr": 0.002,               # Hotter start to break the initial deadzone

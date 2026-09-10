@@ -13,11 +13,14 @@ class FastSpikingNet(nn.Module):
         # A gentler slope allows gradients to flow even when the voltage is well below 1.0.
         # This physically prevents the deadzone disconnect.
         wide_grad = surrogate.fast_sigmoid(slope=25) 
-        
-        self.lif_hidden = snn.Leaky(beta=beta, spike_grad=wide_grad)
+
+        beta_hid = torch.full((num_hidden,), beta)
+        self.lif_hidden = snn.Leaky(beta=beta_hid, spike_grad=wide_grad, learn_beta=True)
         
         self.fc_out = nn.Linear(num_hidden, num_outputs, bias=False)
-        self.lif_out = snn.Leaky(beta=beta, spike_grad=wide_grad)
+
+        beta_out = torch.full((num_outputs,), beta)
+        self.lif_out = snn.Leaky(beta=beta_out, spike_grad=wide_grad, learn_beta=True)
 
         # Shift the mean to be strictly positive to respect biology
         with torch.no_grad():

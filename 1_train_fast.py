@@ -16,7 +16,7 @@ warnings.filterwarnings(
 )
 
 # --- SETUP ---
-TARGET_FOLDER = "experiments/0906_2022_without_minus"
+TARGET_FOLDER = "experiments/0910_1301_24_neurons"
 EPOCHS_TO_RUN = 0
 # -------------
 
@@ -85,7 +85,7 @@ def main():
     best_combined_acc = 0.0
     start_epoch = 0
 
-    model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
+    model_path = os.path.join(TARGET_FOLDER, "a.pth")
     if os.path.exists(model_path):
         checkpoint = torch.load(model_path, map_location=device)
         # Check if it's a new full checkpoint or old legacy weights
@@ -102,7 +102,7 @@ def main():
     if FINE_TUNING: # type: ignore
             optimizer = torch.optim.Adam(model.parameters(), lr=0.000005)
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.9, patience=5, min_lr=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.8, patience=5, min_lr=1e-7)
     
     # 4. Training Loop
     for epoch in range(start_epoch, start_epoch + EPOCHS_TO_RUN):
@@ -142,16 +142,13 @@ def main():
                 max_competitor_vals, _ = other_spikes_2d.max(dim=1)
 
                 if FINE_TUNING: # type: ignore
-                    # --- 4. FINE-TUNING ASYMMETRY ---
-                    # Apply a gentle tax to background spikes, but make false keywords 
-                    # slightly more painful (0.5) than false noise (0.1).
                     false_noise_mask = active_targets != idx_noise
                     if false_noise_mask.any():
                         # Tax for wrong keyword neurons firing (encourages dropping them)
-                        loss = loss + 0.3 * torch.relu(other_spikes_2d[false_noise_mask] - 8.0).sum(dim=1).mean()
+                        loss = loss + 0.5 * 1e-7/ optimizer.param_groups[0]['lr'] * torch.relu(other_spikes_2d[false_noise_mask] - 8.0).sum(dim=1).mean()
 
                         # Much softer tax for the noise neuron firing (allows it to absorb uncertainty)
-                        #loss = loss + 0.1 * torch.relu(active_spikes[false_noise_mask, idx_noise] - 8.0).mean()
+                        loss = loss + 0.1 *  1e-7/ optimizer.param_groups[0]['lr'] * torch.relu(active_spikes[false_noise_mask, idx_noise] - 8.0).mean()
 
                 # 3. Margin Penalty: Target must beat the single loudest runner-up by >= 12 spikes
                 loss = loss + 1.5 * torch.relu(15.0 - (target_spike_vals - max_competitor_vals)).mean()
@@ -166,8 +163,8 @@ def main():
             optimizer.step()
             total_loss += loss.item()
 
-            with torch.no_grad():
-                model.fc_in.weight.data.clamp_(min=0.01)
+            #with torch.no_grad():
+                #model.fc_in.weight.data.clamp_(min=0.01)
     
             # 5. Calculate Accuracy
             max_spikes, raw_preds = spike_counts.max(dim=1)
@@ -186,7 +183,7 @@ def main():
         scheduler.step(average_perf) 
         current_lr = optimizer.param_groups[0]['lr']
 
-        print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train Acc: {train_acc:.1f}% | Test Acc: {test_acc:.1f}% | LR: {current_lr:.6f} | Loss: {epoch_loss:.2f}")
+        print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train Acc: {train_acc:.1f}% | Test Acc: {test_acc:.1f}% | LR: {current_lr:.9f} | Loss: {epoch_loss:.2f}")
 
         if average_perf > best_combined_acc:
             best_combined_acc = average_perf

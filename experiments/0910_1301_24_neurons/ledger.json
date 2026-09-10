@@ -1,0 +1,226 @@
+{
+    "experiment_name": "24_neurons",
+    "base_config": {
+        "num_inputs": 7,
+        "num_hidden": 24,
+        "num_outputs": 5,
+        "batch_size": 128,
+        "beta": 0.88,
+        "lr": 0.002
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0910_1301",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "status": "initialized_fast_snn"
+            }
+        },
+        {
+            "commit_id": "01",
+            "timestamp": "0910_1528",
+            "action": "train",
+            "model_file": "model_01_train.pth",
+            "metrics": {
+                "best_test_acc": 76.65,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 773,
+                        "ret_pct": 98.09644670050761,
+                        "acc": 68.21608040201005
+                    },
+                    "margin_1": {
+                        "retained": 709,
+                        "ret_pct": 89.9746192893401,
+                        "acc": 71.19341563786008
+                    },
+                    "margin_2": {
+                        "retained": 596,
+                        "ret_pct": 75.63451776649747,
+                        "acc": 74.83660130718954
+                    },
+                    "margin_3": {
+                        "retained": 508,
+                        "ret_pct": 64.46700507614213,
+                        "acc": 78.26923076923077
+                    },
+                    "margin_4": {
+                        "retained": 435,
+                        "ret_pct": 55.203045685279186,
+                        "acc": 82.61851015801355
+                    },
+                    "margin_5": {
+                        "retained": 379,
+                        "ret_pct": 48.09644670050762,
+                        "acc": 85.90078328981723
+                    },
+                    "margin_10": {
+                        "retained": 190,
+                        "ret_pct": 24.111675126903553,
+                        "acc": 94.76439790575915
+                    },
+                    "margin_15": {
+                        "retained": 108,
+                        "ret_pct": 13.705583756345177,
+                        "acc": 96.29629629629629
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "02",
+            "timestamp": "0910_1750",
+            "action": "train",
+            "model_file": "model_02_train.pth",
+            "metrics": {
+                "best_test_acc": 75.97,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 772,
+                        "ret_pct": 97.96954314720813,
+                        "acc": 67.04834605597965
+                    },
+                    "margin_1": {
+                        "retained": 716,
+                        "ret_pct": 90.86294416243655,
+                        "acc": 69.64285714285714
+                    },
+                    "margin_2": {
+                        "retained": 637,
+                        "ret_pct": 80.83756345177665,
+                        "acc": 73.87944358578052
+                    },
+                    "margin_3": {
+                        "retained": 544,
+                        "ret_pct": 69.03553299492386,
+                        "acc": 78.30018083182641
+                    },
+                    "margin_4": {
+                        "retained": 480,
+                        "ret_pct": 60.913705583756354,
+                        "acc": 80.82474226804123
+                    },
+                    "margin_5": {
+                        "retained": 425,
+                        "ret_pct": 53.93401015228426,
+                        "acc": 81.16279069767441
+                    },
+                    "margin_10": {
+                        "retained": 219,
+                        "ret_pct": 27.79187817258883,
+                        "acc": 92.3076923076923
+                    },
+                    "margin_15": {
+                        "retained": 124,
+                        "ret_pct": 15.736040609137056,
+                        "acc": 94.44444444444444
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "03",
+            "timestamp": "0910_1825",
+            "action": "train",
+            "model_file": "model_03_train.pth",
+            "metrics": {
+                "best_test_acc": 77.24,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 769,
+                        "ret_pct": 97.58883248730965,
+                        "acc": 68.86912325285896
+                    },
+                    "margin_1": {
+                        "retained": 733,
+                        "ret_pct": 93.02030456852792,
+                        "acc": 70.22696929238985
+                    },
+                    "margin_2": {
+                        "retained": 640,
+                        "ret_pct": 81.21827411167513,
+                        "acc": 74.92354740061162
+                    },
+                    "margin_3": {
+                        "retained": 550,
+                        "ret_pct": 69.79695431472082,
+                        "acc": 77.93594306049823
+                    },
+                    "margin_4": {
+                        "retained": 494,
+                        "ret_pct": 62.69035532994924,
+                        "acc": 79.92047713717693
+                    },
+                    "margin_5": {
+                        "retained": 429,
+                        "ret_pct": 54.441624365482234,
+                        "acc": 81.5068493150685
+                    },
+                    "margin_10": {
+                        "retained": 224,
+                        "ret_pct": 28.426395939086298,
+                        "acc": 91.66666666666666
+                    },
+                    "margin_15": {
+                        "retained": 118,
+                        "ret_pct": 14.974619289340103,
+                        "acc": 96.63865546218487
+                    }
+                }
+            }
+        },
+        {
+            "commit_id": "04",
+            "timestamp": "0910_1825",
+            "action": "train",
+            "model_file": "model_04_train.pth",
+            "metrics": {
+                "best_test_acc": 75.47,
+                "threshold_analysis": {
+                    "margin_0": {
+                        "retained": 769,
+                        "ret_pct": 97.58883248730965,
+                        "acc": 67.68447837150127
+                    },
+                    "margin_1": {
+                        "retained": 723,
+                        "ret_pct": 91.75126903553299,
+                        "acc": 69.95940460081191
+                    },
+                    "margin_2": {
+                        "retained": 638,
+                        "ret_pct": 80.96446700507614,
+                        "acc": 74.57886676875957
+                    },
+                    "margin_3": {
+                        "retained": 564,
+                        "ret_pct": 71.57360406091371,
+                        "acc": 77.83595113438045
+                    },
+                    "margin_4": {
+                        "retained": 490,
+                        "ret_pct": 62.182741116751274,
+                        "acc": 80.72289156626506
+                    },
+                    "margin_5": {
+                        "retained": 432,
+                        "ret_pct": 54.82233502538071,
+                        "acc": 83.14350797266515
+                    },
+                    "margin_10": {
+                        "retained": 222,
+                        "ret_pct": 28.17258883248731,
+                        "acc": 91.96428571428571
+                    },
+                    "margin_15": {
+                        "retained": 104,
+                        "ret_pct": 13.19796954314721,
+                        "acc": 97.14285714285714
+                    }
+                }
+            }
+        }
+    ]
+}

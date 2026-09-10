@@ -1,133 +1,142 @@
 import os
 import torch
-import copy
 from model import FastSpikingNet
 from utils_ledger import load_ledger
 
-TARGET_FOLDER = "experiments/0906_2022_without_minus"
+TARGET_FOLDER = "experiments/0910_1301_24_neurons"
+V_THRESH_INT = 256
 
-def quantize_to_8bit(model, prune_margin=40): # MASSIVE PRUNE: Delete any weight between -30 and +30
-    q_model = copy.deepcopy(model)
-    max_int = 127.0 
-    with torch.no_grad():
-        # Hidden Layer
-        flat_hidden = torch.cat([q_model.fc_in.weight.data.flatten(), q_model.fc_rec.weight.data.flatten()]).abs()
-        scale_in = max_int / torch.quantile(flat_hidden, 0.9815) 
-        q_model.fc_in.weight.data = torch.clamp(torch.round(q_model.fc_in.weight.data * scale_in), min=-max_int, max=max_int)
-        q_model.fc_rec.weight.data = torch.clamp(torch.round(q_model.fc_rec.weight.data * scale_in), min=-max_int, max=max_int)
-        
-        # Prune Hidden
-        q_model.fc_in.weight.data[q_model.fc_in.weight.data.abs() < prune_margin] = 0
-        q_model.fc_rec.weight.data[q_model.fc_rec.weight.data.abs() < prune_margin] = 0
-        q_model.lif_hidden.threshold.data = q_model.lif_hidden.threshold.data * scale_in
-        
-        # Output Layer
-        flat_out = q_model.fc_out.weight.data.abs().flatten()
-        scale_out = max_int / torch.quantile(flat_out, 0.9815)
-        q_model.fc_out.weight.data = torch.clamp(torch.round(q_model.fc_out.weight.data * scale_out), min=-max_int, max=max_int)
-        
-        # Prune Output
-        q_model.fc_out.weight.data[q_model.fc_out.weight.data.abs() < prune_margin] = 0
-        q_model.lif_out.threshold.data = q_model.lif_out.threshold.data * scale_out
-
-        # --- SILICON PRUNING REPORT ---
-        total_w = 320 + 1600 + 240
-        surviving_w = int((q_model.fc_in.weight.data != 0).sum() + 
-                          (q_model.fc_rec.weight.data != 0).sum() + 
-                          (q_model.fc_out.weight.data != 0).sum())
-        
-        print(f"\n--- FAIL-FAST SILICON CHECK ---")
-        print(f"Margin: {prune_margin}")
-        print(f"Surviving Weights (Adders): {surviving_w} / {total_w} ({(surviving_w/total_w)*100:.1f}%)")
-        print(f"Deleted Wires: {total_w - surviving_w}\n")
-
-    return q_model
-
-def generate_fsm_verilog(model, filename="tt_um_snn_fsm.v"):
-    w_in = model.fc_in.weight.data.cpu().numpy().astype(int)
-    w_rec = model.fc_rec.weight.data.cpu().numpy().astype(int)
-    w_out = model.fc_out.weight.data.cpu().numpy().astype(int)
-    th_hid = int(model.lif_hidden.threshold.item())
-    th_out = int(model.lif_out.threshold.item())
-    
-    def v_const(val): return f"-10'sd{abs(val)}" if val < 0 else f"10'sd{val}"
-    
-    with open(filename, "w") as f:
-        f.write("`default_nettype none\n\n")
-        f.write("module tt_um_snn_fsm (\n")
-        f.write("    input  wire [7:0] ui_in,\n")
-        f.write("    output wire [7:0] uo_out,\n")
-        f.write("    input  wire       clk,\n")
-        f.write("    input  wire       rst_n,\n")
-        f.write("    input  wire       tick_1ms  // High for 1 cycle every 1ms\n")
-        f.write(");\n\n")
-        
-        f.write("    reg [5:0] state;\n")
-        f.write("    reg signed [9:0] mem [0:45];\n")
-        f.write("    reg [39:0] hid_spikes;\n")
-        f.write("    reg [5:0]  out_spikes;\n\n")
-        f.write("    assign uo_out = {2'b00, out_spikes};\n\n")
-        
-        f.write("    wire signed [9:0] current_v = mem[state];\n")
-        f.write("    wire signed [9:0] leaked_v = current_v - (current_v >>> 3);\n")
-        f.write("    reg signed [9:0] weight_sum;\n")
-        f.write("    wire signed [9:0] active_thresh = (state < 40) ? 10'sd%d : 10'sd%d;\n\n" % (th_hid, th_out))
-        
-        # Combinatorial Weight Lookup
-        f.write("    always @(*) begin\n")
-        f.write("        weight_sum = 10'sd0;\n")
-        f.write("        case (state)\n")
-        
-        for i in range(40):
-            f.write(f"            6'd{i}: weight_sum = 0")
-            for j in range(8):
-                if w_in[i, j] != 0: f.write(f" + (ui_in[{j}] ? {v_const(w_in[i, j])} : 0)")
-            for j in range(40):
-                if w_rec[i, j] != 0: f.write(f" + (hid_spikes[{j}] ? {v_const(w_rec[i, j])} : 0)")
-            f.write(";\n")
-            
-        for i in range(6):
-            f.write(f"            6'd{i+40}: weight_sum = 0")
-            for j in range(40):
-                if w_out[i, j] != 0: f.write(f" + (hid_spikes[{j}] ? {v_const(w_out[i, j])} : 0)")
-            f.write(";\n")
-            
-        f.write("            default: weight_sum = 10'sd0;\n")
-        f.write("        endcase\n")
-        f.write("    end\n\n")
-        
-        # Sequential State Machine
-        f.write("    wire signed [9:0] next_v = leaked_v + weight_sum;\n")
-        f.write("    wire is_spike = (next_v >= active_thresh);\n\n")
-        
-        f.write("    integer i;\n")
-        f.write("    always @(posedge clk) begin\n")
-        f.write("        if (!rst_n) begin\n")
-        f.write("            state <= 6'd63;\n")
-        f.write("            hid_spikes <= 0;\n")
-        f.write("            out_spikes <= 0;\n")
-        f.write("            for (i = 0; i < 46; i = i + 1) mem[i] <= 0;\n")
-        f.write("        end else begin\n")
-        f.write("            if (state == 6'd63) begin\n")
-        f.write("                if (tick_1ms) state <= 6'd0;\n")
-        f.write("            end else if (state < 6'd46) begin\n")
-        f.write("                mem[state] <= is_spike ? (next_v - active_thresh) : next_v;\n")
-        f.write("                if (state < 40) hid_spikes[state] <= is_spike;\n")
-        f.write("                else out_spikes[state - 40] <= is_spike;\n")
-        f.write("                if (state == 6'd45) state <= 6'd63;\n")
-        f.write("                else state <= state + 1;\n")
-        f.write("            end\n")
-        f.write("        end\n")
-        f.write("    end\n")
-        f.write("endmodule\n")
+def snap_beta_to_shift(beta_float):
+    best_diff, best_shift = float("inf"), 1
+    for k in range(1, 8):
+        diff = abs(beta_float - (1.0 - (1.0 / (2**k))))
+        if diff < best_diff:
+            best_diff, best_shift = diff, k
+    return best_shift
 
 def main():
-    device = torch.device("cpu")
     ledger = load_ledger(TARGET_FOLDER)
     config = ledger["base_config"]
-    model = FastSpikingNet(num_inputs=config["num_inputs"], num_hidden=config["num_hidden"], num_outputs=config["num_outputs"], beta=config["beta"]).to(device)
-    checkpoint = torch.load(os.path.join(TARGET_FOLDER, "model_best.pth"), map_location=device)
-    model.load_state_dict(checkpoint.get("model_state_dict", checkpoint))
-    generate_fsm_verilog(quantize_to_8bit(model))
+    
+    model = FastSpikingNet(
+        num_inputs=config["num_inputs"],
+        num_hidden=config["num_hidden"],
+        num_outputs=config["num_outputs"],
+        beta=config["beta"]
+    )
+    ckpt = torch.load(os.path.join(TARGET_FOLDER, "model_best.pth"), map_location="cpu")
+    model.load_state_dict(ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt)
+    
+    with torch.no_grad():
+        w_in = torch.round(model.fc_in.weight.data * V_THRESH_INT).clamp(-128, 127).int().numpy()
+        w_rec = torch.round(model.fc_rec.weight.data * V_THRESH_INT).clamp(-128, 127).int().numpy()
+        w_out = torch.round(model.fc_out.weight.data * V_THRESH_INT).clamp(-128, 127).int().numpy()
 
-if __name__ == "__main__": main()
+        hidden_betas = torch.sigmoid(model.lif_hidden.beta).detach().cpu()
+        out_betas = torch.sigmoid(model.lif_out.beta).detach().cpu()
+
+        if hidden_betas.ndim == 0:
+            h_shifts = [snap_beta_to_shift(hidden_betas.item())] * 24
+        else:
+            h_shifts = [snap_beta_to_shift(b.item()) for b in hidden_betas]
+            
+        if out_betas.ndim == 0:
+            o_shifts = [snap_beta_to_shift(out_betas.item())] * config["num_outputs"]
+        else:
+            o_shifts = [snap_beta_to_shift(b.item()) for b in out_betas]
+
+    # Generate Unrolled Verilog
+    v = []
+    v.append("// Fully Unrolled 1-to-1 Asynchronous SNN Core")
+    v.append("module snn_core (")
+    v.append("    input  wire        clk,")
+    v.append("    input  wire        rst_n,")
+    v.append(f"    input  wire [{config['num_inputs']-1}:0]  in_spikes,")
+    v.append(f"    output reg  [{config['num_outputs']-1}:0] out_spikes")
+    v.append(");")
+    v.append("")
+    v.append("    // Membrane registers (16-bit signed)")
+    v.append("    reg signed [15:0] mem_hidden [0:23];")
+    v.append(f"    reg signed [15:0] mem_out [0:{config['num_outputs']-1}];")
+    v.append("    reg [23:0] spk_hidden;")
+    v.append("")
+    
+    v.append("    integer i;")
+    v.append("    always @(posedge clk or negedge rst_n) begin")
+    v.append("        if (!rst_n) begin")
+    v.append("            spk_hidden <= 24'b0;")
+    v.append(f"            out_spikes <= {config['num_outputs']}'b0;")
+    v.append("            for (i = 0; i < 24; i = i + 1) mem_hidden[i] <= 16'sd0;")
+    v.append(f"            for (i = 0; i < {config['num_outputs']}; i = i + 1) mem_out[i] <= 16'sd0;")
+    v.append("        end else begin")
+    
+    # Hidden Neurons
+    for n in range(24):
+        k = h_shifts[n]
+        v.append(f"            // --- Hidden Neuron {n} (Shift: {k}) ---")
+        v.append(f"            if (spk_hidden[{n}]) mem_hidden[{n}] <= 16'sd0;")
+        v.append("            else begin")
+        
+        # Build combinational sum using dead-code elimination (skip 0 weights)
+        terms = [f"(mem_hidden[{n}] - (mem_hidden[{n}] >>> {k}))"]
+        for inp in range(config["num_inputs"]):
+            wt = w_in[n, inp]
+            if wt > 0:
+                terms.append(f"(in_spikes[{inp}] ? 16'sd{wt} : 16'sd0)")
+            elif wt < 0:
+                terms.append(f"(in_spikes[{inp}] ? -16'sd{abs(wt)} : 16'sd0)")
+        for rec in range(24):
+            wt = w_rec[n, rec]
+            if wt > 0:
+                terms.append(f"(spk_hidden[{rec}] ? 16'sd{wt} : 16'sd0)")
+            elif wt < 0:
+                terms.append(f"(spk_hidden[{rec}] ? -16'sd{abs(wt)} : 16'sd0)")
+        
+        sum_expr = " + ".join(terms)
+        v.append(f"                mem_hidden[{n}] <= {sum_expr};")
+        v.append("            end")
+        v.append(f"            spk_hidden[{n}] <= (mem_hidden[{n}] >= 16'sd{V_THRESH_INT});")
+        v.append("")
+        
+    # Output Neurons
+    for o in range(config["num_outputs"]):
+        k = o_shifts[o]
+        v.append(f"            // --- Output Neuron {o} (Shift: {k}) ---")
+        v.append(f"            if (out_spikes[{o}]) mem_out[{o}] <= 16'sd0;")
+        v.append("            else begin")
+        terms = [f"(mem_out[{o}] - (mem_out[{o}] >>> {k}))"]
+        for hid in range(24):
+            wt = w_out[o, hid]
+            if wt > 0:
+                terms.append(f"(spk_hidden[{hid}] ? 16'sd{wt} : 16'sd0)")
+            elif wt < 0:
+                terms.append(f"(spk_hidden[{hid}] ? -16'sd{abs(wt)} : 16'sd0)")
+        sum_expr = " + ".join(terms)
+        v.append(f"                mem_out[{o}] <= {sum_expr};")
+        v.append("            end")
+        v.append(f"            out_spikes[{o}] <= (mem_out[{o}] >= 16'sd{V_THRESH_INT});")
+        v.append("")
+        
+    v.append("        end")
+    v.append("    end")
+    v.append("endmodule")
+    
+    with open("snn_core.v", "w") as f:
+        f.write("\n".join(v))
+    print("Generated snn_core.v")
+
+    # Generate Yosys synthesis script
+    ys = [
+        "read_verilog snn_core.v",
+        "hierarchy -check -top snn_core",
+        "proc; opt; fsm; opt; memory; opt",
+        "techmap; opt",
+        "stat"
+    ]
+    with open("synth.ys", "w") as f:
+        f.write("\n".join(ys))
+    print("Generated synth.ys")
+    print("\nRun: yosys synth.ys to inspect resource and gate counts.")
+
+if __name__ == "__main__":
+    main()

@@ -13,9 +13,17 @@ MIC_MHZ = 1000000
 SNN_CLOCK_HZ = 1000      
 WINDOW_TICKS = MIC_MHZ // SNN_CLOCK_HZ
 
-# Hardware Channel Tuning (High freq -> Low freq)
-BETAS = torch.tensor([0.75, 0.80, 0.85, 0.90, 0.95, 0.97, 0.98, 0.99])
-THRESHOLDS = torch.tensor([2.72, 3.235, 4.085, 5.737, 10.75, 17.45, 25.95, 51.15]) # hand tuned
+# --- 7-CHANNEL HARDWARE COCHLEA ALIGNMENT ---
+# Ch 0: 0.8809 [V - (V>>3) + (V>>7) - (V>>9)]  | Thresh: V >= 16'd5120
+# Ch 1: 0.9297 [V - (V>>4) - (V>>7)]           | Thresh: V >= 16'd8192
+# Ch 2: 0.9512 [V - (V>>4) + (V>>6) - (V>>9)]  | Thresh: V >= 16'd11264
+# Ch 3: 0.9600 [V - (V>>5) - (V>>7) - (V>>10)] | Thresh: V >= 16'd13568
+# Ch 4: 0.9746 [V - (V>>5) + (V>>7) - (V>>9)]  | Thresh: V >= 16'd20992
+# Ch 5: 0.9766 [V - (V>>5) + (V>>7)]           | Thresh: V >= 16'd22784
+# Ch 6: 0.9912 [V - (V>>7) - (V>>10)]          | Thresh: V >= 16'd59392
+
+BETAS = torch.tensor([0.8809, 0.9297, 0.9512, 0.9600, 0.9746, 0.9766, 0.9912])
+THRESHOLDS = torch.tensor([5.00, 8.00, 11.00, 13.25, 20.50, 22.25, 58.00])
 TRAIN_MULTIPLIER = 10  
 
 def _augment(waveform):
@@ -40,11 +48,11 @@ def simulate_silicon_cochlea(waveform, device):
     # Reshape for the SNN clock domains[cite: 1]
     pdm_windows = pdm_bits.to(device).view(SNN_CLOCK_HZ, WINDOW_TICKS).unsqueeze(-1)
     
-    betas = BETAS.to(device).view(1, 8)
-    v_ths = THRESHOLDS.to(device).view(1, 8)
+    betas = BETAS.to(device).view(1, 7)
+    v_ths = THRESHOLDS.to(device).view(1, 7)
     
-    mem = torch.zeros(SNN_CLOCK_HZ, 8, device=device)
-    sticky_latches = torch.zeros(SNN_CLOCK_HZ, 8, dtype=torch.bool, device=device)
+    mem = torch.zeros(SNN_CLOCK_HZ, 7, device=device)
+    sticky_latches = torch.zeros(SNN_CLOCK_HZ, 7, dtype=torch.bool, device=device)
     
     # Hardware Integrator Array (The Silicon)[cite: 1]
     for t in range(WINDOW_TICKS):
@@ -61,6 +69,8 @@ def main():
     cache_dir = "data_cache"
     
     labels = [d for d in os.listdir(raw_audio_dir) if not d.startswith(".")]
+    labels.remove("minus")
+    labels.remove("plus")
     
     print("=== Fabricating Vectorized Silicon Cache ===")
     for lbl in labels:

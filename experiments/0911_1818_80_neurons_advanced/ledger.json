@@ -11,11 +11,11 @@
     "commits": [
         {
             "commit_id": "00",
-            "timestamp": "0911_1319",
+            "timestamp": "0911_1818",
             "action": "init",
             "model_file": "model_00_init.pth",
             "metrics": {
-                "status": "initialized_fast_snn"
+                "status": "initialized_fp_sandbox"
             }
         }
     ]

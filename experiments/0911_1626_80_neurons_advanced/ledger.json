@@ -1,0 +1,22 @@
+{
+    "experiment_name": "80_neurons_advanced",
+    "base_config": {
+        "num_inputs": 8,
+        "num_hidden": 80,
+        "num_outputs": 7,
+        "batch_size": 128,
+        "beta": 0.88,
+        "lr": 0.002
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0911_1626",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "status": "initialized_fp_sandbox"
+            }
+        }
+    ]
+}

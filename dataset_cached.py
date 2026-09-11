@@ -22,24 +22,20 @@ class CachedSpikeDataset(Dataset):
 
 def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
     # Removed 'minus' and 'plus' for the 5-class V2 Architecture
-    labels = ["drü", "eis", "vier", "zwoi", "noise", "silence"]
+    labels = ["eis",  "zwoi", "drü", "vier", "plus", "minus", "noise", "silence"]
     labels_map = {lbl: i for i, lbl in enumerate(labels)}
-    
-    # Map missing classes directly to noise
-    labels_map["minus"] = labels_map["noise"]
-    labels_map["plus"] = labels_map["noise"]
     
     temp_train = {lbl: [] for lbl in labels}
     temp_test = {lbl: [] for lbl in labels}
     
-    folder_names = ["drü", "eis", "vier", "zwoi", "noise", "silence"]
+    folder_names = ["eis", "zwoi", "drü", "vier", "minus", "plus", "noise", "silence"]
     
     # --- PASS 1: Gather all files and separate Test vs Train ---
     for folder in folder_names:
         lbl_dir = os.path.join(cache_dir, folder)
         files = [f for f in os.listdir(lbl_dir) if f.endswith(".pt")]
         
-        target_label = folder if folder != "minus" else "noise"
+        target_label = folder
         
         if folder in ["noise", "silence"]:
             random.shuffle(files)
@@ -57,7 +53,7 @@ def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
     print(f"Dynamically capping Test Set at {min_test_count} samples per class.")
     
     # Find the largest keyword class to define our ideal epoch size
-    keyword_labels = ["drü", "eis", "vier", "zwoi"]
+    keyword_labels = ["drü", "eis", "vier", "zwoi", "minus", "plus"]
     max_keyword_train = max(len(temp_train[lbl]) for lbl in keyword_labels)
     
     train_files, test_files = [], []

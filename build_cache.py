@@ -13,14 +13,15 @@ MIC_MHZ = 1000000
 SNN_CLOCK_HZ = 1000      
 WINDOW_TICKS = MIC_MHZ // SNN_CLOCK_HZ
 
-# --- 7-CHANNEL HARDWARE COCHLEA ALIGNMENT ---
-# Ch 0: 0.8809 [V - (V>>3) + (V>>7) - (V>>9)]  | Thresh: V >= 16'd5120
-# Ch 1: 0.9297 [V - (V>>4) - (V>>7)]           | Thresh: V >= 16'd8192
-# Ch 2: 0.9512 [V - (V>>4) + (V>>6) - (V>>9)]  | Thresh: V >= 16'd11264
-# Ch 3: 0.9600 [V - (V>>5) - (V>>7) - (V>>10)] | Thresh: V >= 16'd13568
-# Ch 4: 0.9746 [V - (V>>5) + (V>>7) - (V>>9)]  | Thresh: V >= 16'd20992
-# Ch 5: 0.9766 [V - (V>>5) + (V>>7)]           | Thresh: V >= 16'd22784
-# Ch 6: 0.9912 [V - (V>>7) - (V>>10)]          | Thresh: V >= 16'd59392
+# --- 8-CHANNEL HARDWARE COCHLEA ALIGNMENT ---
+# Ch 0: 0.8125 [V - (V>>2) + (V>>4)]           | Thresh: V >= 16'd3584
+# Ch 1: 0.8809 [V - (V>>3) + (V>>7) - (V>>9)]  | Thresh: V >= 16'd5120
+# Ch 2: 0.9297 [V - (V>>4) - (V>>7)]           | Thresh: V >= 16'd8192
+# Ch 3: 0.9512 [V - (V>>4) + (V>>6) - (V>>9)]  | Thresh: V >= 16'd11264
+# Ch 4: 0.9600 [V - (V>>5) - (V>>7) - (V>>10)] | Thresh: V >= 16'd13568
+# Ch 5: 0.9746 [V - (V>>5) + (V>>7) - (V>>9)]  | Thresh: V >= 16'd20992
+# Ch 6: 0.9766 [V - (V>>5) + (V>>7)]           | Thresh: V >= 16'd22784
+# Ch 7: 0.9912 [V - (V>>7) - (V>>10)]          | Thresh: V >= 16'd59392
 
 BETAS = torch.tensor([0.8125, 0.8809, 0.9297, 0.9512, 0.9600, 0.9746, 0.9766, 0.9912])
 THRESHOLDS = torch.tensor([3.5, 5.00, 8.00, 11.00, 13.25, 20.50, 22.25, 58.00])
@@ -69,8 +70,6 @@ def main():
     cache_dir = "data_cache"
     
     labels = [d for d in os.listdir(raw_audio_dir) if not d.startswith(".")]
-    labels.remove("minus")
-    labels.remove("plus")
     
     print("=== Fabricating Vectorized Silicon Cache ===")
     for lbl in labels:

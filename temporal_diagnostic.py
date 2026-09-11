@@ -66,8 +66,6 @@ def main():
     print(f"Testing Thresholds: {THRESHOLDS.tolist()}\n")
     
     for lbl in labels:
-        if lbl in {"plus", "minus"}:
-            continue
         lbl_dir = os.path.join(RAW_DATA_DIR, lbl)
         files = [f for f in os.listdir(lbl_dir) if f.endswith(".wav")]
         

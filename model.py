@@ -4,7 +4,7 @@ import snntorch as snn
 from snntorch import surrogate
 
 class FastSpikingNet(nn.Module):
-    def __init__(self, num_inputs=8, num_hidden=128, num_outputs=6, beta=0.88):
+    def __init__(self, num_inputs=8, num_hidden=80, num_outputs=7, beta=0.88):
         super().__init__()
         self.fc_in = nn.Linear(num_inputs, num_hidden, bias=False)
         self.fc_rec = nn.Linear(num_hidden, num_hidden, bias=False)
@@ -22,7 +22,7 @@ class FastSpikingNet(nn.Module):
         beta_out = torch.full((num_outputs,), beta)
         self.lif_out = snn.Leaky(beta=beta_out, spike_grad=wide_grad, learn_beta=True)
 
-        # Shift the mean to be strictly positive to respect biology
+        # Shift the mean to be strictly positive to prevent early network collapse
         with torch.no_grad():
             self.fc_in.weight.data.normal_(mean=0.15, std=0.02)
             self.fc_rec.weight.data.normal_(mean=0.01, std=0.01) 

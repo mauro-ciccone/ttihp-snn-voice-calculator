@@ -17,6 +17,51 @@
             "metrics": {
                 "status": "initialized_fp_sandbox"
             }
+        },
+        {
+            "commit_id": "01",
+            "timestamp": "0914_1329",
+            "action": "train",
+            "model_file": "model_01_train.pth",
+            "metrics": {
+                "best_test_acc": 64.85
+            }
+        },
+        {
+            "commit_id": "02",
+            "timestamp": "0914_1410",
+            "action": "train",
+            "model_file": "model_02_train.pth",
+            "metrics": {
+                "best_test_acc": 73.92
+            }
+        },
+        {
+            "commit_id": "03",
+            "timestamp": "0914_1456",
+            "action": "train",
+            "model_file": "model_03_train.pth",
+            "metrics": {
+                "best_test_acc": 76.59
+            }
+        },
+        {
+            "commit_id": "04",
+            "timestamp": "0914_1527",
+            "action": "train",
+            "model_file": "model_04_train.pth",
+            "metrics": {
+                "best_test_acc": 67.26
+            }
+        },
+        {
+            "commit_id": "05",
+            "timestamp": "0914_1545",
+            "action": "train",
+            "model_file": "model_05_train.pth",
+            "metrics": {
+                "best_test_acc": 78.11
+            }
         }
     ]
 }

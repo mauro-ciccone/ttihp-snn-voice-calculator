@@ -70,21 +70,3 @@ class FastSpikingNet(nn.Module):
             spk_out_rec.append(spk_out)
             
         return torch.stack(spk_out_rec, dim=1), torch.stack(spk_hidden_rec, dim=1)
-
-    def hardware_beta_penalty(self):
-        """
-        Phase 2 Loss: Forces learned betas to snap to the nearest valid hardware shift.
-        Returns the mean squared error between current betas and the closest physical shift.
-        """
-        # Apply sigmoid to constrain the raw learned betas between 0 and 1
-        current_hid_betas = torch.sigmoid(self.lif_hidden.beta)
-        current_out_betas = torch.sigmoid(self.lif_out.beta)
-        
-        # Calculate distance to nearest valid hardware beta
-        dist_hid = torch.cdist(current_hid_betas.unsqueeze(1), self.valid_betas.unsqueeze(1)) # type: ignore
-        dist_out = torch.cdist(current_out_betas.unsqueeze(1), self.valid_betas.unsqueeze(1)) # type: ignore
-        
-        min_dist_hid, _ = torch.min(dist_hid, dim=1)
-        min_dist_out, _ = torch.min(dist_out, dim=1)
-        
-        return min_dist_hid.mean() + min_dist_out.mean()

@@ -5,6 +5,7 @@ from tqdm import tqdm
 from dataset_cached import get_cached_dataloaders
 from model import FastSpikingNet
 from utils_ledger import load_ledger, get_latest_commit, append_commit
+import math
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
@@ -52,7 +53,11 @@ def main():
     device = torch.device("cpu")
     FINE_TUNING = False
 
-    # --- Silicon Costs based on 6-bit Max Shift Architecture ---
+    # --- HARDWARE CONSTANTS (Defined outside the training loop) ---
+    # DFF area = 49.0 um^2. Combo gate area = 10.3 um^2.
+    AREA_DFF = 49.0
+    AREA_COMBO = 10.3 
+    GATES_PER_ADDER_BIT = 5.0
 
     valid_betas = torch.tensor([
         0.0000, 0.0156, 0.0312, 0.0469, 0.0625, 0.0781, 0.0938, 0.1094, 
@@ -208,6 +213,67 @@ def main():
                 # 4. Silence Penalty
 
                 loss = loss + 0.0025 * (spike_counts[silence_mask] ** 3).mean()
+
+            # =======================================================
+            # --- PHASE 2: CONTINUOUS ABSOLUTE HARDWARE SQUEEZE ---
+            # =======================================================
+            
+            # --- Helper: Quantization & Masking for a given layer ---
+            def quantize_and_mask(weight, max_val=31.0):
+                w_abs = torch.abs(weight)
+                delta = (torch.quantile(w_abs.detach(), 0.985) + 1e-8) / max_val
+                w_scaled = weight / delta
+                # Integer gravity well
+                loss_q = (1.0 - torch.cos(2.0 * math.pi * w_scaled)).mean()
+                # Wire mask (Severed if absolute digital weight < 0.5)
+                mask = torch.sigmoid(10.0 * (torch.abs(w_scaled) - 0.5))
+                return loss_q, mask
+
+            # 1. Dynamic Grid Quantization (Both Layers)
+            loss_q_hid, mask_hid = quantize_and_mask(model.fc_hidden.weight) # type: ignore
+            loss_q_out, mask_out = quantize_and_mask(model.fc_out.weight)
+            loss = loss + 0.1 * (loss_q_hid + loss_q_out)
+
+            # 2. Strict Beta Snapping (Both Layers)
+            all_betas = torch.cat([model.lif_hidden.beta, model.lif_out.beta])
+            beta_dists = (all_betas.unsqueeze(1) - valid_betas.unsqueeze(0)) ** 2
+            loss_beta_snap = beta_dists.min(dim=1)[0].mean()
+            loss = loss + 10.0 * loss_beta_snap
+
+            # 3. Unified Global Silicon Budget (The Area Wall)
+            # Differentiable hardware costs
+            beta_weights = torch.nn.functional.softmax(-1000.0 * beta_dists, dim=1)
+            soft_frac_bits = (beta_weights * frac_bits).sum(dim=1)
+            soft_alu_count = (beta_weights * alu_costs).sum(dim=1)
+
+            # Membrane register sizes
+            all_thresholds = torch.cat([model.lif_hidden.threshold, model.lif_out.threshold])
+            int_bits = torch.clamp(torch.log2(all_thresholds + 1.0), min=1.0)
+            total_bits = int_bits + soft_frac_bits
+
+            # Compute exact Area in um^2
+            dff_area_um2 = (total_bits * AREA_DFF).sum()
+            alu_area_um2 = (total_bits * soft_alu_count * GATES_PER_ADDER_BIT * AREA_COMBO).sum()
+            total_area_um2 = dff_area_um2 + alu_area_um2
+
+            # Continuous area pressure + Quadratic wall at 60k um2
+            loss_area_pressure = 1e-6 * total_area_um2
+            loss_area_wall = torch.relu(total_area_um2 - 60000.0) ** 2
+            loss = loss + loss_area_pressure + (1e-5 * loss_area_wall)
+
+            # --- 4. Single-Spike-Safe Temporal Dispersion ---
+            # Input Bus Collisions (x shape: [B, T, 8])
+            arrivals_hid = torch.matmul(x, mask_hid.t())
+            
+            # Hidden Bus Collisions (spk_hidden shape: [B, T, 80])
+            arrivals_out = torch.matmul(spk_hidden, mask_out.t())
+            
+            # ReLU(-1.0) allows 1 spike without penalty. Only >=2 spikes incur loss.
+            overage_hid = torch.relu(arrivals_hid - 1.0)
+            overage_out = torch.relu(arrivals_out - 1.0)
+            
+            loss_collision = (overage_hid ** 2).mean() + (overage_out ** 2).mean()
+            loss = loss + (0.05 * loss_collision)
     
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5) 

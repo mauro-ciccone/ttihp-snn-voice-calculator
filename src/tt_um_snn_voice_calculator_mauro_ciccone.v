@@ -1,6 +1,6 @@
 `default_nettype none
 
-module tt_snn_voice_calculator_mauro_ciccone (
+module tt_um_snn_voice_calculator_mauro_ciccone (
     input  wire [7:0] ui_in,    // Dedicated inputs: [0] = PDM mic, [6:1] = Dynamic WTA stimulus
     output wire [7:0] uo_out,   // Dedicated outputs: 7-segment display {dp, g, f, e, d, c, b, a}
     input  wire [7:0] uio_in,   // IOs: Input path (unused)

@@ -1,5 +1,5 @@
 {
-    "experiment_name": "80_neurons_advanced",
+    "experiment_name": "80_neurons_harsh_continous",
     "base_config": {
         "num_inputs": 8,
         "num_hidden": 80,
@@ -11,7 +11,7 @@
     "commits": [
         {
             "commit_id": "00",
-            "timestamp": "0911_1626",
+            "timestamp": "0914_1219",
             "action": "init",
             "model_file": "model_00_init.pth",
             "metrics": {

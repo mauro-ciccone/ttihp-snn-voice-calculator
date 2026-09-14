@@ -5,7 +5,7 @@ from model import FastSpikingNet
 from utils_ledger import create_ledger, append_commit
 
 # --- INITIALIZATION CONFIG ---
-EXP_NAME = "80_neurons_advanced"
+EXP_NAME = "80_neurons_harsh_continous"
 BASE_CONFIG = {
     "num_inputs": 8,           # 8 hardware LIF channels (7 freq + 1 noise gate)
     "num_hidden": 80,          # Expanded search space for Phase 1

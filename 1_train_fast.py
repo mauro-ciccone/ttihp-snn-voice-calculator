@@ -11,8 +11,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._back
 
 # --- SETUP ---
 # Update this to match your newly created folder from 0_init.py!
-TARGET_FOLDER = "experiments/0911_1818_80_neurons_advanced" 
-EPOCHS_TO_RUN = 100
+TARGET_FOLDER = "experiments/0914_1219_80_neurons_harsh_continous" 
+MODEL_NAME = "model_00_init.pth"
+EPOCHS_TO_RUN = 300
 # -------------
 
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
@@ -76,14 +77,21 @@ def main():
         beta=config["beta"]
     ).to(device)
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
+    # Separate parameters
+    beta_params = [p for n, p in model.named_parameters() if 'beta' in n]
+    weight_params = [p for n, p in model.named_parameters() if 'beta' not in n]
+
+    optimizer = torch.optim.Adam([
+        {'params': weight_params, 'lr': config["lr"]},       # e.g., 0.002
+        {'params': beta_params, 'lr': config["lr"] * 0.1}    # e.g., 0.0002
+    ])
     
     best_test_acc = 0.0
     best_combined_acc = 0.0
     start_epoch = 0
     checkpoint = {}  # FIXED: Default dictionary prevents UnboundLocalError
 
-    model_path = os.path.join(TARGET_FOLDER, "model_00_init.pth")
+    model_path = os.path.join(TARGET_FOLDER, MODEL_NAME)
     if os.path.exists(model_path):
         raw_data = torch.load(model_path, map_location=device)
         if isinstance(raw_data, dict) and "model_state_dict" in raw_data:
@@ -98,7 +106,7 @@ def main():
             checkpoint = {"epoch": 0, "best_test_acc": 0.0}
             print(">>> Loaded initial model weights.")
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.9, patience=5, min_lr=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=5, min_lr=1e-7)
     
     # 3. Training Loop
     for epoch in range(start_epoch, start_epoch + EPOCHS_TO_RUN):
@@ -112,8 +120,9 @@ def main():
             optimizer.zero_grad()
             batches += 1
             
-            spk_out, _ = model(x)
+            spk_out, spk_hidden = model(x)
             spike_counts = spk_out.sum(dim=1)   # Shape: [batch_size, 7]
+            hidden_counts = spk_hidden.sum(dim=1)
             
             # Route Data: Active (0-6) vs Silence (7)
             active_mask = y < config["num_outputs"] 
@@ -127,32 +136,50 @@ def main():
                 target_spike_vals = active_spikes[torch.arange(len(active_targets)), active_targets]
 
                 # 1. Target Volume (Aim for 40-50 spikes)
-                loss = loss + 2.0 * torch.relu(40.0 - target_spike_vals).mean()
-                loss = loss + torch.relu(target_spike_vals - 50.0).mean()
 
-                # 2. Loudest Competitor Isolation
+                loss = loss + 0.0002 * ((target_spike_vals - 45.0) ** 4).mean()
+
+                # 2. HOMEOSTASIS: Windowed Hidden Spike Penalty
+                # hidden_counts shape: [batch_size, num_hidden]
+                # Sum across all 80 neurons to get total network activity per sample
+                total_hidden_spikes = hidden_counts.sum(dim=1) 
+
+                loss = loss + 1.0 * (((torch.abs(total_hidden_spikes - 400.0) / 100.0)) ** 3).mean()
+
+                # 3. Margin Penalty (Target must lead by >= 15 spikes)
                 other_mask = torch.ones_like(active_spikes, dtype=torch.bool)
                 other_mask[torch.arange(len(active_targets)), active_targets] = False
                 other_spikes_2d = active_spikes[other_mask].view(len(active_targets), -1)
                 max_competitor_vals, _ = other_spikes_2d.max(dim=1)
 
-                if FINE_TUNING:
-                    false_noise_mask = active_targets != idx_noise
-                    if false_noise_mask.any():
-                        lr = optimizer.param_groups[0]['lr']
-                        loss = loss + 0.5 * (1e-6 / lr) * torch.relu(other_spikes_2d[false_noise_mask] - 8.0).sum(dim=1).mean()
-                        loss = loss + 0.1 * (1e-6 / lr) * torch.relu(active_spikes[false_noise_mask, idx_noise] - 8.0).mean()
+                # A) Margin Penalty (STILL INCLUDES NOISE)
 
-                # 3. Margin Penalty (Target must lead by >= 15 spikes)
-                loss = loss + 1.5 * torch.relu(10.0 - (target_spike_vals - max_competitor_vals)).mean()
+                margin = target_spike_vals - max_competitor_vals
+                loss = loss + 0.2 * (torch.nn.functional.softplus((40.0 - margin) / 5.0) ** 3).mean()
+
+                # B) Gravity Well (EXEMPTS NOISE)
+                gravity_spikes = active_spikes.clone()
+                # Zero out the target pin (so we don't penalize the correct answer)
+                gravity_spikes[torch.arange(len(active_targets)), active_targets] = 0.0
+                # Zero out the noise pin (exempting it from absolute energy suppression)
+                gravity_spikes[:, idx_noise] = 0.0  
+                
+                # Sum the wasted energy across only the false keyword pins
+                loss = loss + 0.005 * (gravity_spikes ** 2).sum(dim=1).mean()
         
             if silence_mask.any():
                 # 4. Silence Penalty
-                loss = loss + 2.0 * torch.relu(spike_counts[silence_mask] - 7.0).mean()
+
+                loss = loss + 0.0025 * (spike_counts[silence_mask] ** 3).mean()
     
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) 
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5) 
             optimizer.step()
+
+            with torch.no_grad():
+                model.lif_hidden.beta.clamp_(0.0, 0.99)
+                model.lif_out.beta.clamp_(0.0, 0.99)
+
             total_loss += loss.item()
     
             max_spikes, raw_preds = spike_counts.max(dim=1)
@@ -166,8 +193,8 @@ def main():
         epoch_loss = total_loss / batches if batches > 0 else 0.0
         
         test_acc, _, _, _, _, _ = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
-        average_perf = (test_acc + train_acc) / 2.0
-        scheduler.step(average_perf) 
+        average_perf = (test_acc + train_acc - epoch_loss) / 3.0
+        scheduler.step(epoch_loss) 
         current_lr = optimizer.param_groups[0]['lr']
 
         print(f"Epoch {epoch+1:02d}/{start_epoch + EPOCHS_TO_RUN} | Train: {train_acc:.1f}% | Test: {test_acc:.1f}% | LR: {current_lr:.6f} | Loss: {epoch_loss:.2f}")
@@ -188,9 +215,6 @@ def main():
             torch.save(saved_checkpoint, best_model_path)
             print(f"   🌟 New Best Combined Score! Saved {best_model_path}")
 
-        if current_lr < 0.0001:
-            FINE_TUNING = True
-
     # 4. Final Diagnostics
     print("\nRunning Final Diagnostics...")
     final_test_acc, preds, targets, spike_counts, input_counts, hidden_counts = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
@@ -198,6 +222,35 @@ def main():
     target_tensor_arr = torch.tensor(targets)
     pred_tensor_arr = torch.tensor(preds)
     
+    # --- 1. Average Input Spikes per Target Class ---
+    print("\n--- Average Input Spikes per Target Class ---")
+    num_inputs = config["num_inputs"]
+    header_in = f"{'Target Class':<13} | " + " | ".join([f"Ch{i:<4}" for i in range(num_inputs)]) + " || TOTAL"
+    print(header_in)
+    print("-" * len(header_in))
+    for i in range(len(inv_labels)): 
+        class_mask = target_tensor_arr == i
+        if class_mask.sum() > 0:
+            mean_in = input_counts[class_mask].float().mean(dim=0)
+            total_in = mean_in.sum().item()
+            row = f"{inv_labels[i]:<13} | " + " | ".join([f"{val:>6.1f}" for val in mean_in]) + f" || {total_in:>6.1f}"
+            print(row)
+
+    # --- 2. Average Hidden Spikes per Target Class ---
+    print("\n--- Average Hidden Spikes per Target Class ---")
+    header_hid = f"{'Target Class':<13} | {'Total Layer':>11} | {'Avg/Neuron':>10} | {'Max Neuron':>10}"
+    print(header_hid)
+    print("-" * len(header_hid))
+    for i in range(len(inv_labels)): 
+        class_mask = target_tensor_arr == i
+        if class_mask.sum() > 0:
+            mean_hid = hidden_counts[class_mask].float().mean(dim=0)
+            total_hid = mean_hid.sum().item()
+            avg_per_n = mean_hid.mean().item()
+            max_n = mean_hid.max().item()
+            print(f"{inv_labels[i]:<13} | {total_hid:>11.1f} | {avg_per_n:>10.1f} | {max_n:>10.1f}")
+
+    # --- 3. Average Output Spikes per Target Class ---
     print("\n--- Average Output Spikes per Target Class ---")
     header_spikes = f"{'Target Class':<13} | " + " | ".join([f"{inv_labels[i]:>6}" for i in range(num_classes)])
     print(header_spikes)
@@ -208,7 +261,45 @@ def main():
             mean_spikes = spike_counts[class_mask].float().mean(dim=0)
             print(f"{inv_labels[i]:<13} | " + " | ".join([f"{val:>6.1f}" for val in mean_spikes]))
 
-    # --- 3. Hardware Precision Matrix (%) ---
+    # --- 4. Network Health & Sparsity Audit (The Pruning Radar) ---
+    print("\n--- Network Health & Sparsity Audit ---")
+    
+    # 1. Activity Checks
+    total_spikes_per_neuron = hidden_counts.sum(dim=0)
+    avg_spikes_per_neuron = hidden_counts.mean(dim=0)
+    
+    dead_neurons = (total_spikes_per_neuron == 0).nonzero(as_tuple=True)[0].tolist()
+    hyper_neurons = (avg_spikes_per_neuron > 40).nonzero(as_tuple=True)[0].tolist()
+    
+    # 2. Structural Checks (Using 1e-4 as the "zero" threshold for floating point)
+    # fc_in shape: [num_hidden, num_inputs] -> Check max input weight per hidden neuron
+    max_in_w = model.fc_in.weight.data.abs().max(dim=1)[0]
+    severed_in = (max_in_w < 1e-4).nonzero(as_tuple=True)[0].tolist()
+    
+    # fc_out shape: [num_outputs, num_hidden] -> Check max output weight per hidden neuron
+    max_out_w = model.fc_out.weight.data.abs().max(dim=0)[0]
+    weak_out = (max_out_w < 1.0).nonzero(as_tuple=True)[0].tolist()
+    
+    # fc_rec shape: [num_hidden, num_hidden] -> Check max recurrent weight per hidden neuron
+    max_rec_w = model.fc_rec.weight.data.abs().max(dim=1)[0]
+    severed_rec = (max_rec_w < 1e-4).nonzero(as_tuple=True)[0].tolist()
+    
+    # 3. Temporal Checks
+    fast_leakers = (model.lif_hidden.beta.data <= 0.5).nonzero(as_tuple=True)[0].tolist()
+    
+    # 4. Synthesize: The "Useless" Set (Dead AND Weak Output)
+    useless_set = set(dead_neurons) & set(weak_out)
+    
+    print(f"Total Hidden Neurons: {config['num_hidden']}")
+    print(f"Dead Neurons (0 spikes on test set) : {len(dead_neurons):>3}  {dead_neurons if dead_neurons else ''}")
+    print(f"Hyperactive (>40 spikes per sample): {len(hyper_neurons):>3}  {hyper_neurons if hyper_neurons else ''}")
+    print(f"Severed Inputs (Max In W < 0.0001)  : {len(severed_in):>3}  {severed_in if severed_in else ''}")
+    print(f"Severed Recurrents (Max Rec W < 0)  : {len(severed_rec):>3}  {severed_rec if severed_rec else ''}")
+    print(f"Weak Output Drivers (Max W < 1.0)   : {len(weak_out):>3}") # List hidden if too long
+    print(f"Fast Leakers (Beta <= 0.5)          : {len(fast_leakers):>3}")
+    print(f"--> Prime Pruning Candidates        : {len(useless_set):>3}  {list(useless_set) if useless_set else ''}")
+
+    # --- 5. Hardware Precision Matrix (%) ---
     print("\n--- Hardware Precision Matrix (%) ---")
     print("(Calculated only on active keyword triggers. Noise/Silence = Dropped)")
     keyword_idx = [i for i in range(num_classes) if i not in (idx_noise, idx_silence)]
@@ -233,7 +324,7 @@ def main():
             row_str += f"|| {ret_pct:>6.1f}%"
             print(row_str)
 
-    # --- 4. ACTIONABLE KEYWORD MARGIN REPORT ---
+    # --- 6. ACTIONABLE KEYWORD MARGIN REPORT ---
     sorted_spikes, _ = torch.sort(spike_counts, dim=1, descending=True)
     margin_diffs = sorted_spikes[:, 0] - sorted_spikes[:, 1]
     

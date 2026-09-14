@@ -1,5 +1,5 @@
 {
-    "experiment_name": "80_neurons_advanced",
+    "experiment_name": "80_neurons_continous_loss",
     "base_config": {
         "num_inputs": 8,
         "num_hidden": 80,
@@ -11,11 +11,20 @@
     "commits": [
         {
             "commit_id": "00",
-            "timestamp": "0911_1818",
+            "timestamp": "0913_1323",
             "action": "init",
             "model_file": "model_00_init.pth",
             "metrics": {
                 "status": "initialized_fp_sandbox"
+            }
+        },
+        {
+            "commit_id": "01",
+            "timestamp": "0913_1842",
+            "action": "train",
+            "model_file": "model_01_train.pth",
+            "metrics": {
+                "best_test_acc": 79.0
             }
         }
     ]

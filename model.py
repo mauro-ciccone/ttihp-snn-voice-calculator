@@ -4,37 +4,14 @@ import snntorch as snn
 from snntorch import surrogate
 
 class FastSpikingNet(nn.Module):
-    def __init__(self, num_inputs=8, num_hidden=80, num_outputs=7, beta=0.88):
-        super().__init__()
-        
-        # --- COMPLETE EXHAUSTIVE HARDWARE DICTIONARY (SHIFTS 0-4) ---
-        self.register_buffer("valid_betas", torch.tensor([
-            0.0000,  # [0 Gates] Clear (V >> inf)
-            0.0625,  # [0 Gates] (V >> 4)
-            0.1250,  # [0 Gates] (V >> 3)
-            0.1875,  # [1 Gate]  (V >> 3) + (V >> 4)
-            0.2500,  # [0 Gates] (V >> 2)
-            0.3125,  # [1 Gate]  (V >> 2) + (V >> 4)
-            0.3750,  # [1 Gate]  (V >> 2) + (V >> 3)
-            0.4375,  # [1 Gate]  (V >> 1) - (V >> 4) 
-            0.5000,  # [0 Gates] (V >> 1)
-            0.5625,  # [1 Gate]  (V >> 1) + (V >> 4)
-            0.6250,  # [1 Gate]  (V >> 1) + (V >> 3)
-            0.6875,  # [2 Gates] V - (V >> 2) - (V >> 4)
-            0.7500,  # [1 Gate]  V - (V >> 2) 
-            0.8125,  # [2 Gates] V - (V >> 3) - (V >> 4)
-            0.8750,  # [1 Gate]  V - (V >> 3)
-            0.9375,  # [1 Gate]  V - (V >> 4)
-            1.0000   # [0 Gates] (V >> 0) 
-        ]))
-
-        
+    def __init__(self, num_inputs=8, num_hidden=80, num_outputs=7, beta=0.88, slope=25):
+        super().__init__()        
 
         self.fc_in = nn.Linear(num_inputs, num_hidden, bias=False)
         self.fc_rec = nn.Linear(num_hidden, num_hidden, bias=False)
         
         # A gentler slope allows gradients to flow preventing the deadzone disconnect.
-        wide_grad = surrogate.fast_sigmoid(slope=25) 
+        wide_grad = surrogate.fast_sigmoid(slope=slope) 
 
         beta_hid = torch.full((num_hidden,), beta)
         self.lif_hidden = snn.Leaky(beta=beta_hid, spike_grad=wide_grad, learn_beta=True)

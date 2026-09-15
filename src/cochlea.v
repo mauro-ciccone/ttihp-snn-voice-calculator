@@ -33,8 +33,8 @@ module cochlea (
     wire [10:0] next_v_2 = mem_2 - (mem_2 >> 4) - (mem_2 >> 7) + (pdm_in ? 11'd128 : 11'd0);
     // Ch 3: Beta = 0.9512 | PDM Add = 512
     wire [12:0] next_v_3 = mem_3 - (mem_3 >> 4) + (mem_3 >> 6) - (mem_3 >> 9) + (pdm_in ? 13'd512 : 13'd0);
-    // Ch 4: Beta = 0.9600 | PDM Add = 1024
-    wire [13:0] next_v_4 = mem_4 - (mem_4 >> 5) - (mem_4 >> 7) - (mem_4 >> 10) + (pdm_in ? 14'd1024 : 14'd0);
+    // Ch 4: Beta = 0.7539 | PDM Add = 1024
+    wire [13:0] next_v_4 = mem_4 - (mem_4 >> 2) + (mem_4 >> 8) + (pdm_in ? 14'd1024 : 14'd0);
     // Ch 5: Beta = 0.9746 | PDM Add = 512
     wire [13:0] next_v_5 = mem_5 - (mem_5 >> 5) + (mem_5 >> 7) - (mem_5 >> 9) + (pdm_in ? 14'd512 : 14'd0);
     // Ch 6: Beta = 0.9766 | PDM Add = 128
@@ -47,10 +47,10 @@ module cochlea (
     wire fired_1 = (next_v_1 >= 12'd2560);   // 5.00 * 512
     wire fired_2 = (next_v_2 >= 11'd1024);   // 8.00 * 128
     wire fired_3 = (next_v_3 >= 13'd5632);   // 11.00 * 512
-    wire fired_4 = (next_v_4 >= 14'd13568);  // 13.25 * 1024
-    wire fired_5 = (next_v_5 >= 14'd10496);  // 20.50 * 512
+    wire fired_4 = (next_v_4 >= 14'd2816);   // 2.75 * 1024
+    wire fired_5 = (next_v_5 >= 14'd10752);  // 21.00 * 512
     wire fired_6 = (next_v_6 >= 12'd2848);   // 22.25 * 128
-    wire fired_7 = (next_v_7 >= 16'd59392);  // 58.00 * 1024
+    wire fired_7 = (next_v_7 >= 16'd59904);  // 58.50 * 1024
 
     wire [7:0] current_fired = {fired_7, fired_6, fired_5, fired_4, fired_3, fired_2, fired_1, fired_0};
 

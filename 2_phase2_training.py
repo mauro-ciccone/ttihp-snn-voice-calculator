@@ -116,7 +116,8 @@ def main():
         num_inputs=config["num_inputs"],
         num_hidden=config["num_hidden"],
         num_outputs=config["num_outputs"],
-        beta=config["beta"]
+        beta=config["beta"],
+        slope=50
     ).to(device)
     
     # Separate parameters

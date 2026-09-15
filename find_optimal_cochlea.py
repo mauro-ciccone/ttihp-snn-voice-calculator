@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 # --- HARDWARE DICTIONARIES ---
 VALID_BETAS = np.array([
-    0.0156, 0.0312, 0.0469, 0.0625, 0.0781, 0.0938, 0.1094, 
+    0.0000, 0.0156, 0.0312, 0.0469, 0.0625, 0.0781, 0.0938, 0.1094, 
     0.1250, 0.1406, 0.1562, 0.1719, 0.1875, 0.2031, 0.2188, 0.2344, 
     0.2500, 0.2656, 0.2812, 0.2969, 0.3125, 0.3281, 0.3438, 0.3594, 
     0.3750, 0.3906, 0.4062, 0.4219, 0.4375, 0.4531, 0.4688, 0.4844, 
@@ -27,20 +27,17 @@ FRAC_BITS = np.array([
     2, 6, 5, 6, 4, 6, 5, 6, 3, 6, 5, 6, 4, 6, 5, 6, 0
 ], dtype=np.int32)
 
-# Sweep matrix: Exploring multiple sensitivity levels
 # High-Resolution Sweep Matrix (~200 sensitivity levels)
-# 0.125 steps up to 10, 0.25 steps up to 20, 0.5 steps up to 60
 THRESH_MULTIPLIERS = np.concatenate([
-    np.arange(0.125, 10.0, 0.0625),
-    np.arange(10.0, 15.0, 0.125),
-    np.arange(15.0, 25.0, 0.25),
-    np.arange(25.0, 60.0, 1.0)
+    np.arange(0.125, 10.0, 0.125),
+    np.arange(10.0, 20.0, 0.25),
+    np.arange(20.0, 60.5, 0.5)
 ])
 
 def build_shift_tables():
-    """ Reverse-engineers the exact hardware shifts to maintain 100% truncation accuracy """
-    shifts = np.zeros((64, 4), dtype=np.int32)
-    signs = np.zeros((64, 4), dtype=np.int32)
+    num_betas = len(VALID_BETAS)
+    shifts = np.zeros((num_betas, 4), dtype=np.int32)
+    signs = np.zeros((num_betas, 4), dtype=np.int32)
     verilog_strs = []
     
     for i, beta in enumerate(VALID_BETAS):
@@ -48,7 +45,6 @@ def build_shift_tables():
         best_diff = 999
         best_ops = []
         
-        # Brute force up to 4 CSD terms (V +/- V>>1 +/- ...) to match the beta exactly
         for s1 in [1]: 
             for sh1 in [0]:
                 for s2 in [0, 1, -1]:
@@ -68,12 +64,10 @@ def build_shift_tables():
                                             if s3 != 0: ops.append((s3, sh3))
                                             if s4 != 0: ops.append((s4, sh4))
                                             
-                                            # Prefer minimal ALUs
                                             if len(ops) < best_diff:
                                                 best_diff = len(ops)
                                                 best_ops = ops
                                                 
-        # Populate Numba lookup tables
         v_str = "mem"
         for idx, (s, sh) in enumerate(best_ops):
             shifts[i, idx] = sh
@@ -85,7 +79,6 @@ def build_shift_tables():
         
     return shifts, signs, verilog_strs
 
-# The core Numba engine (Simulates 1 neuron perfectly mimicking hardware truncation)
 @njit
 def sim_neuron(pdm_bits, shift_arr, sign_arr, pdm_add, v_th):
     spikes = np.zeros(1000, dtype=np.float32)
@@ -95,21 +88,16 @@ def sim_neuron(pdm_bits, shift_arr, sign_arr, pdm_add, v_th):
     sticky = False
     
     for t in range(len(pdm_bits)):
-        # 1. Hardware Shifts
         next_v = 0
         for i in range(4):
-            if sign_arr[i] == 1:
-                next_v += (mem >> shift_arr[i])
-            elif sign_arr[i] == -1:
-                next_v -= (mem >> shift_arr[i])
+            if sign_arr[i] == 1: next_v += (mem >> shift_arr[i])
+            elif sign_arr[i] == -1: next_v -= (mem >> shift_arr[i])
                 
-        # 2. Integrate & Threshold
         mem = next_v + (pdm_bits[t] * pdm_add)
         if mem >= v_th:
             mem = 0
             sticky = True
             
-        # 3. 1ms Framing
         tick_cnt += 1
         if tick_cnt == 1000:
             if window_idx < 1000:
@@ -121,7 +109,6 @@ def sim_neuron(pdm_bits, shift_arr, sign_arr, pdm_add, v_th):
     return spikes
 
 def extract_audio_pdms(audio_dir, samples_per_class=10):
-    """ Loads real audio and converts to 1MHz PDM exactly once """
     classes = [d for d in os.listdir(audio_dir) if not d.startswith(".")]
     dataset = []
     
@@ -134,7 +121,6 @@ def extract_audio_pdms(audio_dir, samples_per_class=10):
             wav_path = os.path.join(audio_dir, lbl, f)
             waveform, sr = torchaudio.load(wav_path)
             
-            # Safe Mono Mixdown
             if waveform.shape[0] > 1: waveform = waveform.mean(dim=0, keepdim=True)
             if waveform.shape[-1] < sr: waveform = torch.nn.functional.pad(waveform, (0, sr - waveform.shape[-1]))
             else: waveform = waveform[:, :sr]
@@ -152,69 +138,86 @@ def main():
     shifts, signs, v_strs = build_shift_tables()
     dataset, classes = extract_audio_pdms("custom_audio")
     
-    # Feature vectors: [Neuron ID] -> [Spike Rates per Class]
-    candidate_features = []
     candidate_meta = []
+    candidate_class_footprints = []
+    
+    kw_classes = [c for c in classes if c not in ["silence", "noise"]]
     
     print("\nSimulating Hardware Candidate Space...")
-    for b_idx in tqdm(range(64), desc="Betas"):
+    for b_idx in tqdm(range(len(VALID_BETAS)), desc="Betas"):
         pdm_add = int(1 << FRAC_BITS[b_idx])
         
         for t_mult in THRESH_MULTIPLIERS:
             v_th = int(t_mult * pdm_add)
             if v_th == 0: continue
             
-            # Accumulate temporal footprint across classes
             class_footprints = {c: [] for c in classes}
             for lbl, pdm in dataset:
                 spikes = sim_neuron(pdm, shifts[b_idx], signs[b_idx], pdm_add, v_th)
-                # Compress 1000ms into 20 bins of 50ms for the feature vector
                 binned = spikes.reshape((20, 50)).sum(axis=1)
                 class_footprints[lbl].append(binned)
                 
-            # Average samples and flatten into a single feature vector
-            feature_vec = []
-            for c in classes:
-                feature_vec.extend(np.mean(class_footprints[c], axis=0))
-            feature_vec = np.array(feature_vec)
+            class_totals = {c: np.sum(np.mean(class_footprints[c], axis=0)) for c in classes}
+            silence_spikes = class_totals.get("silence", 0)
+            noise_spikes = class_totals.get("noise", 0)
+            avg_kw_spikes = np.mean([class_totals[c] for c in kw_classes]) if kw_classes else 0
             
-            # Filter dead neurons or hyperactive noise generators
-            total_spikes = feature_vec.sum()
-            if 10 < total_spikes < 4000:
-                candidate_features.append(feature_vec)
+            # --- THE RELAXED PHYSICAL BOUNDS ---
+            if 10 <= avg_kw_spikes <= 450 and silence_spikes <= 50 and noise_spikes <= 700:
+                # Store the isolated keyword footprints [num_keywords, 20]
+                kw_footprints = [np.mean(class_footprints[c], axis=0) for c in kw_classes]
+                candidate_class_footprints.append(kw_footprints)
                 candidate_meta.append((b_idx, VALID_BETAS[b_idx], t_mult, v_th, pdm_add, v_strs[b_idx]))
 
-    candidate_features = np.array(candidate_features)
+    candidate_class_footprints = np.array(candidate_class_footprints)
+    print(f"\nFound {len(candidate_class_footprints)} viable acoustic feature extractors.")
     
-    print(f"\nFound {len(candidate_features)} viable acoustic feature extractors.")
-    print("Executing Max-Min Orthogonal Diversity Search for best 6 channels...")
-    
+    if len(candidate_class_footprints) < 6:
+        print("Error: Not enough viable configurations found. Check audio data.")
+        return
+        
+    print("Executing Inter-Class Phonetic Separability Search for best 6 channels...")
     selected_indices = []
+    num_kw = len(kw_classes)
     
-    # 1. Pick the neuron with the highest variance (most descriptive single channel)
-    variances = np.var(candidate_features, axis=1)
-    selected_indices.append(np.argmax(variances))
-    
-    # 2. Iteratively pick the neuron furthest away from all currently selected neurons
-    for _ in range(5):
-        max_min_dist = -1
+    for step in range(6):
+        best_min_dist = -1.0
         best_candidate = -1
         
-        for i in range(len(candidate_features)):
+        for i in range(len(candidate_class_footprints)):
             if i in selected_indices: continue
             
-            # Find distance to closest selected neuron
-            min_dist_to_selected = 999999
-            for sel_idx in selected_indices:
-                dist = np.linalg.norm(candidate_features[i] - candidate_features[sel_idx])
-                if dist < min_dist_to_selected:
-                    min_dist_to_selected = dist
+            current_set = selected_indices + [i]
+            
+            # Extract matrices for current combination -> Shape: (len(current_set), num_kw, 20)
+            combined_images = candidate_class_footprints[current_set]
+            
+            # Reshape to -> (num_kw, len(current_set) * 20) to form a unified temporal image per class
+            combined_images = combined_images.transpose(1, 0, 2).reshape(num_kw, -1)
+            
+            min_dist_between_classes = 9999.0
+            
+            # Measure pairwise distance between every combination of keywords
+            for c1 in range(num_kw):
+                for c2 in range(c1 + 1, num_kw):
+                    v1 = combined_images[c1]
+                    v2 = combined_images[c2]
                     
-            if min_dist_to_selected > max_min_dist:
-                max_min_dist = min_dist_to_selected
+                    norm1 = np.linalg.norm(v1) + 1e-8
+                    norm2 = np.linalg.norm(v2) + 1e-8
+                    cosine_sim = np.dot(v1, v2) / (norm1 * norm2)
+                    dist = 1.0 - cosine_sim
+                    
+                    if dist < min_dist_between_classes:
+                        min_dist_between_classes = dist
+                        
+            # Maximize the distance between the two most easily confused keywords
+            if min_dist_between_classes > best_min_dist:
+                best_min_dist = min_dist_between_classes
                 best_candidate = i
                 
         selected_indices.append(best_candidate)
+        print(f"Step {step+1}/6 | Selected Candidate {best_candidate} | Hardest Keyword Pair Distance: {best_min_dist:.4f}")
         
     print("\n=======================================================")
     print("      🏆 OPTIMAL 6-CHANNEL COCHLEA GENERATED 🏆")
@@ -227,7 +230,6 @@ def main():
         b_idx, beta_val, t_mult, v_th, pdm_add, v_str = candidate_meta[idx]
         final_betas.append(beta_val)
         final_thresh.append(t_mult)
-        
         reg_size = int(np.ceil(np.log2(v_th + 1)))
         
         print(f"// --- Channel {ch} ---")

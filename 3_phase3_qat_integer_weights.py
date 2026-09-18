@@ -12,8 +12,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-MODEL_NAME = "model_best.pth"
-EPOCHS_TO_RUN = 50
+MODEL_NAME = "phase3_84.6acc.pth"
+EPOCHS_TO_RUN = 0
 
 # --- HARDWARE CONSTANTS ---
 VALID_BETAS = torch.tensor([
@@ -108,6 +108,8 @@ class Phase3QATNet(nn.Module):
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
     model.eval()
     val_correct, val_total = 0, 0
+    all_preds, all_targets, all_spikes = [], [], []
+    all_in_spikes, all_hidden_spikes = [], []
     
     with torch.no_grad():
         for x, y in data_loader:
@@ -115,14 +117,25 @@ def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
             spk_out, spk_hidden = model(x)
             spike_counts = spk_out.sum(dim=1)
             
+            # Dynamic hardware inference: silence if under 10 spikes
             max_spikes, raw_preds = spike_counts.max(dim=1)
             preds = torch.where(max_spikes < 10, torch.tensor(idx_silence, device=device), raw_preds)
             
             val_correct += (preds == y).sum().item()
             val_total += y.size(0)
             
+            all_preds.extend(preds.cpu().tolist())
+            all_targets.extend(y.cpu().tolist())
+            all_spikes.append(spike_counts.cpu())
+            all_in_spikes.append(x.sum(dim=1).cpu())
+            all_hidden_spikes.append(spk_hidden.sum(dim=1).cpu())
+            
+    spike_counts = torch.cat(all_spikes, dim=0)
+    input_counts = torch.cat(all_in_spikes, dim=0)
+    hidden_counts = torch.cat(all_hidden_spikes, dim=0)
     acc = (val_correct / val_total) * 100 if val_total > 0 else 0.0
-    return acc
+    
+    return acc, all_preds, all_targets, spike_counts, input_counts, hidden_counts
 
 def main():
     device = torch.device("cpu")
@@ -134,19 +147,48 @@ def main():
     train_loader, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
     idx_noise = labels_map.get("noise", 6)
     idx_silence = labels_map.get("silence", 7)
+
+    inv_labels = {v: k for k, v in labels_map.items()}
+    num_classes = config["num_outputs"]
     
+    # 1. Initialize base model and load Phase 2 weights to capture the correct trained betas
     orig_model = FastSpikingNet(
         num_inputs=config["num_inputs"], num_hidden=config["num_hidden"],
         num_outputs=config["num_outputs"], beta=config["beta"]
     ).to(device)
     
-    checkpoint = torch.load(os.path.join(TARGET_FOLDER, MODEL_NAME), map_location=device)
-    orig_model.load_state_dict(checkpoint["model_state_dict"])
-    
+    base_model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
+    if os.path.exists(base_model_path):
+        base_ckpt = torch.load(base_model_path, map_location=device)
+        base_state = base_ckpt.get("model_state_dict", base_ckpt)
+        orig_model.load_state_dict(base_state, strict=False)
+        print(">>> Loaded base Phase 2 model for correct hardware betas.")
+
+    # 2. Wrap in Phase3QATNet (this extracts and locks the correct snapped betas)
     model = Phase3QATNet(orig_model, config, device).to(device)
     
+    # 3. If MODEL_NAME points to a Phase 3 checkpoint, load its trained weights directly
+    target_checkpoint_path = os.path.join(TARGET_FOLDER, MODEL_NAME)
+    best_test_acc = 0.0
+    
+    if MODEL_NAME != "model_best.pth" and os.path.exists(target_checkpoint_path):
+        print(f">>> Loading Phase 3 checkpoint weights from {MODEL_NAME}...")
+        p3_ckpt = torch.load(target_checkpoint_path, map_location=device)
+        p3_state = p3_ckpt.get("model_state_dict", p3_ckpt)
+        
+        if "w_in" in p3_state:
+            model.w_in.data.copy_(p3_state["w_in"])
+            model.w_rec.data.copy_(p3_state["w_rec"])
+            model.w_out.data.copy_(p3_state["w_out"])
+            best_test_acc = p3_ckpt.get("best_test_acc", 0.0)
+            print(f">>> Successfully loaded Phase 3 weights | Previous Best Acc: {best_test_acc:.1f}%")
+        else:
+            print(">>> Warning: 'w_in' not found in checkpoint state dict, keeping initialized weights.")
+    else:
+        print(">>> Starting fresh from Phase 2 baseline weights.")
+    
     # 1e-4 LR provides a soft landing into strict integers
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-6)
     
     best_test_acc = 0.0
@@ -185,7 +227,7 @@ def main():
                 other_spikes_2d = active_spikes[other_mask].view(len(active_targets), -1)
                 max_competitor_vals, _ = other_spikes_2d.max(dim=1)
                 margin = target_spike_vals - max_competitor_vals
-                loss = loss + 0.2 * (torch.nn.functional.softplus((40.0 - margin) / 5.0) ** 3).mean()
+                loss = loss + 0.4 * (torch.nn.functional.softplus((40.0 - margin) / 5.0) ** 3).mean()
 
                 gravity_spikes = active_spikes.clone()
                 gravity_spikes[torch.arange(len(active_targets)), active_targets] = 0.0
@@ -210,7 +252,7 @@ def main():
         train_acc = (correct / total) * 100 if total > 0 else 0.0
         epoch_loss = total_loss / batches if batches > 0 else 0.0
         
-        test_acc = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
+        test_acc = run_evaluation(model, test_loader, device, idx_noise, idx_silence)[0]
         scheduler.step(epoch_loss) 
         current_lr = optimizer.param_groups[0]['lr']
 
@@ -220,6 +262,133 @@ def main():
             best_test_acc = train_acc
             torch.save({"model_state_dict": model.state_dict()}, os.path.join(TARGET_FOLDER, "phase3_model_best.pth"))
             print(f"   🌟 New Best Phase 3 Acc! Saved phase3_model_best.pth")
+
+    # ======================================================================
+    # FINAL DIAGNOSTICS BLOCK
+    # ======================================================================
+    print("\nRunning Final Diagnostics...")
+    final_test_acc, preds, targets, spike_counts, input_counts, hidden_counts = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
+    
+    target_tensor_arr = torch.tensor(targets)
+    pred_tensor_arr = torch.tensor(preds)
+    
+    # --- 1. Average Input Spikes per Target Class ---
+    print("\n--- Average Input Spikes per Target Class ---")
+    num_inputs = config["num_inputs"]
+    header_in = f"{'Target Class':<13} | " + " | ".join([f"Ch{i:<4}" for i in range(num_inputs)]) + " || TOTAL"
+    print(header_in)
+    print("-" * len(header_in))
+    for i in range(len(inv_labels)): 
+        class_mask = target_tensor_arr == i
+        if class_mask.sum() > 0:
+            mean_in = input_counts[class_mask].float().mean(dim=0)
+            total_in = mean_in.sum().item()
+            row = f"{inv_labels[i]:<13} | " + " | ".join([f"{val:>6.1f}" for val in mean_in]) + f" || {total_in:>6.1f}"
+            print(row)
+
+    # --- 2. Average Hidden Spikes per Target Class ---
+    print("\n--- Average Hidden Spikes per Target Class ---")
+    header_hid = f"{'Target Class':<13} | {'Total Layer':>11} | {'Avg/Neuron':>10} | {'Max Neuron':>10}"
+    print(header_hid)
+    print("-" * len(header_hid))
+    for i in range(len(inv_labels)): 
+        class_mask = target_tensor_arr == i
+        if class_mask.sum() > 0:
+            mean_hid = hidden_counts[class_mask].float().mean(dim=0)
+            total_hid = mean_hid.sum().item()
+            avg_per_n = mean_hid.mean().item()
+            max_n = mean_hid.max().item()
+            print(f"{inv_labels[i]:<13} | {total_hid:>11.1f} | {avg_per_n:>10.1f} | {max_n:>10.1f}")
+
+    # --- 3. Average Output Spikes per Target Class ---
+    print("\n--- Average Output Spikes per Target Class ---")
+    header_spikes = f"{'Target Class':<13} | " + " | ".join([f"{inv_labels[i]:>6}" for i in range(num_classes)])
+    print(header_spikes)
+    print("-" * len(header_spikes))
+    for i in range(len(inv_labels)): 
+        class_mask = target_tensor_arr == i
+        if class_mask.sum() > 0:
+            mean_spikes = spike_counts[class_mask].float().mean(dim=0)
+            print(f"{inv_labels[i]:<13} | " + " | ".join([f"{val:>6.1f}" for val in mean_spikes]))
+
+    # --- 4. Network Health & Sparsity Audit (Phase 3 Adjusted) ---
+    print("\n--- Network Health & Sparsity Audit ---")
+    
+    total_spikes_per_neuron = hidden_counts.sum(dim=0)
+    avg_spikes_per_neuron = hidden_counts.mean(dim=0)
+    
+    dead_neurons = (total_spikes_per_neuron == 0).nonzero(as_tuple=True)[0].tolist()
+    hyper_neurons = (avg_spikes_per_neuron > 40).nonzero(as_tuple=True)[0].tolist()
+    
+    # Structural Checks (Using Phase 3 Custom Parameters)
+    max_in_w = model.w_in.data.abs().max(dim=1)[0]
+    severed_in = (max_in_w < 1e-4).nonzero(as_tuple=True)[0].tolist()
+    
+    max_out_w = model.w_out.data.abs().max(dim=0)[0]
+    weak_out = (max_out_w < 1.0).nonzero(as_tuple=True)[0].tolist()
+    
+    max_rec_w = model.w_rec.data.abs().max(dim=1)[0]
+    severed_rec = (max_rec_w < 1e-4).nonzero(as_tuple=True)[0].tolist()
+    
+    fast_leakers = (model.beta_hid <= 0.5).nonzero(as_tuple=True)[0].tolist()
+    useless_set = set(dead_neurons) & set(weak_out)
+    
+    print(f"Total Hidden Neurons: {config['num_hidden']}")
+    print(f"Dead Neurons (0 spikes on test set) : {len(dead_neurons):>3}  {dead_neurons if dead_neurons else ''}")
+    print(f"Hyperactive (>40 spikes per sample): {len(hyper_neurons):>3}  {hyper_neurons if hyper_neurons else ''}")
+    print(f"Severed Inputs (Max In W < 0.0001)  : {len(severed_in):>3}  {severed_in if severed_in else ''}")
+    print(f"Severed Recurrents (Max Rec W < 0)  : {len(severed_rec):>3}  {severed_rec if severed_rec else ''}")
+    print(f"Weak Output Drivers (Max W < 1.0)   : {len(weak_out):>3}")
+    print(f"Fast Leakers (Beta <= 0.5)          : {len(fast_leakers):>3}")
+    print(f"--> Prime Pruning Candidates        : {len(useless_set):>3}  {list(useless_set) if useless_set else ''}")
+
+    # --- 5. Hardware Precision Matrix (%) ---
+    print("\n--- Hardware Precision Matrix (%) ---")
+    print("(Calculated only on active keyword triggers. Noise/Silence = Dropped)")
+    keyword_idx = [i for i in range(num_classes) if i not in (idx_noise, idx_silence)]
+    header = f"{'Target / Pred':<13} | " + " | ".join([f"{inv_labels[i]:>6}" for i in keyword_idx]) + " || Retention"
+    print(header)
+    print("-" * len(header))
+    
+    for t_idx in keyword_idx:
+        t_mask = target_tensor_arr == t_idx
+        total_samples = t_mask.sum().item()
+        if total_samples > 0:
+            preds_for_target = pred_tensor_arr[t_mask]
+            active_preds = preds_for_target[(preds_for_target != idx_noise) & (preds_for_target != idx_silence)]
+            retained = active_preds.size(0)
+            ret_pct = (retained / total_samples) * 100
+            
+            row_str = f"{inv_labels[t_idx]:<13} | "
+            for p_idx in keyword_idx:
+                count = (active_preds == p_idx).sum().item()
+                pct = (count / retained * 100) if retained > 0 else 0.0
+                row_str += f"{pct:>6.1f} | "
+            row_str += f"|| {ret_pct:>6.1f}%"
+            print(row_str)
+
+    # --- 6. ACTIONABLE KEYWORD MARGIN REPORT ---
+    sorted_spikes, _ = torch.sort(spike_counts, dim=1, descending=True)
+    margin_diffs = sorted_spikes[:, 0] - sorted_spikes[:, 1]
+    
+    is_keyword_target = (target_tensor_arr != idx_noise) & (target_tensor_arr != idx_silence)
+    total_real_keywords = is_keyword_target.sum().item()
+
+    print(f"\n--- Spike Margin Threshold Report (Base: {total_real_keywords} Real Keywords) ---")
+    for margin in [0, 1, 2, 3, 4, 5, 10, 15]:
+        margin_met = margin_diffs >= margin
+        
+        is_keyword_pred = (pred_tensor_arr != idx_noise) & (pred_tensor_arr != idx_silence)
+        attempt_mask = margin_met & is_keyword_pred
+        total_attempts = attempt_mask.sum().item()
+        
+        correct_attempts = (pred_tensor_arr[attempt_mask] == target_tensor_arr[attempt_mask]).sum().item()
+        precision = (correct_attempts / total_attempts * 100) if total_attempts > 0 else 0.0
+        
+        keywords_attempted = (attempt_mask & is_keyword_target).sum().item()
+        retention_pct = (keywords_attempted / total_real_keywords * 100) if total_real_keywords > 0 else 0.0
+
+        print(f">= {margin:2d} spikes diff | Prec (Acc): {precision:5.1f}% | Retention: {keywords_attempted:3d}/{total_real_keywords:3d} ({retention_pct:5.1f}%) | Total Triggers: {total_attempts}")
 
 if __name__ == "__main__":
     main()

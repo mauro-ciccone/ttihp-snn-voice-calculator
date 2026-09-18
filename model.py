@@ -14,12 +14,12 @@ class FastSpikingNet(nn.Module):
         wide_grad = surrogate.fast_sigmoid(slope=slope) 
 
         beta_hid = torch.full((num_hidden,), beta)
-        self.lif_hidden = snn.Leaky(beta=beta_hid, spike_grad=wide_grad, learn_beta=True)
+        self.lif_hidden = snn.Leaky(beta=beta_hid, spike_grad=wide_grad, learn_beta=True, reset_mechanism="zero")
         
         self.fc_out = nn.Linear(num_hidden, num_outputs, bias=False)
 
         beta_out = torch.full((num_outputs,), beta)
-        self.lif_out = snn.Leaky(beta=beta_out, spike_grad=wide_grad, learn_beta=True)
+        self.lif_out = snn.Leaky(beta=beta_out, spike_grad=wide_grad, learn_beta=True, reset_mechanism="zero")
 
         # Shift the mean strictly positive to prevent early network collapse
         with torch.no_grad():

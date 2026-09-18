@@ -1,0 +1,40 @@
+{
+    "experiment_name": "6_neuron_cochlea_no_vier",
+    "base_config": {
+        "num_inputs": 6,
+        "num_hidden": 80,
+        "num_outputs": 6,
+        "batch_size": 128,
+        "beta": 0.88,
+        "lr": 0.002
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0916_2317",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "status": "initialized_fp_sandbox"
+            }
+        },
+        {
+            "commit_id": "01",
+            "timestamp": "0917_1540",
+            "action": "train",
+            "model_file": "model_01_train.pth",
+            "metrics": {
+                "best_test_acc": 88.52
+            }
+        },
+        {
+            "commit_id": "02",
+            "timestamp": "0918_1804",
+            "action": "train",
+            "model_file": "model_02_train.pth",
+            "metrics": {
+                "best_test_acc": 87.57
+            }
+        }
+    ]
+}

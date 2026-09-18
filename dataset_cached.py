@@ -21,14 +21,14 @@ class CachedSpikeDataset(Dataset):
         return spike_tensor, label
 
 def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
-    # Removed 'minus' and 'plus' for the 5-class V2 Architecture
-    labels = ["eis",  "zwoi", "drü", "vier", "plus", "minus", "noise", "silence"]
+    
+    labels = ["eis",  "zwoi", "drü", "plus", "minus", "noise", "silence"]
     labels_map = {lbl: i for i, lbl in enumerate(labels)}
     
     temp_train = {lbl: [] for lbl in labels}
     temp_test = {lbl: [] for lbl in labels}
     
-    folder_names = ["eis", "zwoi", "drü", "vier", "minus", "plus", "noise", "silence"]
+    folder_names = ["eis", "zwoi", "drü", "minus", "plus", "noise", "silence"]
     
     # --- PASS 1: Gather all files and separate Test vs Train ---
     for folder in folder_names:
@@ -53,7 +53,7 @@ def get_cached_dataloaders(cache_dir="data_cache", batch_size=128):
     print(f"Dynamically capping Test Set at {min_test_count} samples per class.")
     
     # Find the largest keyword class to define our ideal epoch size
-    keyword_labels = ["drü", "eis", "vier", "zwoi", "minus", "plus"]
+    keyword_labels = ["drü", "eis", "zwoi", "minus", "plus"]
     max_keyword_train = max(len(temp_train[lbl]) for lbl in keyword_labels)
     
     train_files, test_files = [], []

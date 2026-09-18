@@ -1,0 +1,67 @@
+{
+    "experiment_name": "6_neuron_cochlea",
+    "base_config": {
+        "num_inputs": 6,
+        "num_hidden": 80,
+        "num_outputs": 7,
+        "batch_size": 128,
+        "beta": 0.88,
+        "lr": 0.002
+    },
+    "commits": [
+        {
+            "commit_id": "00",
+            "timestamp": "0916_1520",
+            "action": "init",
+            "model_file": "model_00_init.pth",
+            "metrics": {
+                "status": "initialized_fp_sandbox"
+            }
+        },
+        {
+            "commit_id": "01",
+            "timestamp": "0916_1544",
+            "action": "train",
+            "model_file": "model_01_train.pth",
+            "metrics": {
+                "best_test_acc": 74.0
+            }
+        },
+        {
+            "commit_id": "02",
+            "timestamp": "0916_1632",
+            "action": "train",
+            "model_file": "model_02_train.pth",
+            "metrics": {
+                "best_test_acc": 76.5
+            }
+        },
+        {
+            "commit_id": "03",
+            "timestamp": "0916_1825",
+            "action": "train",
+            "model_file": "model_03_train.pth",
+            "metrics": {
+                "best_test_acc": 74.33
+            }
+        },
+        {
+            "commit_id": "04",
+            "timestamp": "0916_1827",
+            "action": "train",
+            "model_file": "model_04_train.pth",
+            "metrics": {
+                "best_test_acc": 79.46
+            }
+        },
+        {
+            "commit_id": "05",
+            "timestamp": "0916_1906",
+            "action": "train",
+            "model_file": "model_05_train.pth",
+            "metrics": {
+                "best_test_acc": 82.5
+            }
+        }
+    ]
+}

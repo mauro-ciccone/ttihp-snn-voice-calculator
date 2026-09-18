@@ -110,6 +110,7 @@ def sim_neuron(pdm_bits, shift_arr, sign_arr, pdm_add, v_th):
 
 def extract_audio_pdms(audio_dir, samples_per_class=10):
     classes = [d for d in os.listdir(audio_dir) if not d.startswith(".")]
+    classes.remove("vier")
     dataset = []
     
     print("Loading Audio & Generating PDM Physics...")
@@ -139,11 +140,12 @@ def main():
     dataset, classes = extract_audio_pdms("custom_audio")
     
     candidate_meta = []
-    candidate_class_footprints = []
+    candidate_features = [] # Used for correlation (redundancy penalty)
+    candidate_fisher_scores = [] # The pure information score
     
     kw_classes = [c for c in classes if c not in ["silence", "noise"]]
     
-    print("\nSimulating Hardware Candidate Space...")
+    print("\nSimulating Hardware Candidate Space and Calculating Fisher Information...")
     for b_idx in tqdm(range(len(VALID_BETAS)), desc="Betas"):
         pdm_add = int(1 << FRAC_BITS[b_idx])
         
@@ -151,74 +153,93 @@ def main():
             v_th = int(t_mult * pdm_add)
             if v_th == 0: continue
             
+            # Store footprints: [Class] -> [List of 50 temporal arrays]
             class_footprints = {c: [] for c in classes}
             for lbl, pdm in dataset:
                 spikes = sim_neuron(pdm, shifts[b_idx], signs[b_idx], pdm_add, v_th)
                 binned = spikes.reshape((20, 50)).sum(axis=1)
                 class_footprints[lbl].append(binned)
                 
+            # Hardware Viability Checks
             class_totals = {c: np.sum(np.mean(class_footprints[c], axis=0)) for c in classes}
             silence_spikes = class_totals.get("silence", 0)
             noise_spikes = class_totals.get("noise", 0)
             avg_kw_spikes = np.mean([class_totals[c] for c in kw_classes]) if kw_classes else 0
             
-            # --- THE RELAXED PHYSICAL BOUNDS ---
             if 10 <= avg_kw_spikes <= 450 and silence_spikes <= 50 and noise_spikes <= 700:
-                # Store the isolated keyword footprints [num_keywords, 20]
-                kw_footprints = [np.mean(class_footprints[c], axis=0) for c in kw_classes]
-                candidate_class_footprints.append(kw_footprints)
+                
+                # --- LAW 1: FISHER'S LINEAR DISCRIMINANT (J) ---
+                # Calculate how mathematically separable the keywords are on this specific channel
+                global_mean = np.mean([np.mean(class_footprints[c], axis=0) for c in kw_classes], axis=0)
+                
+                between_class_variance = 0.0
+                within_class_variance = 0.0
+                
+                for c in kw_classes:
+                    class_samples = np.array(class_footprints[c]) # Shape: (num_samples, 20)
+                    class_mean = np.mean(class_samples, axis=0)
+                    
+                    # Distance between this keyword and the global average (We want this MASSIVE)
+                    between_class_variance += len(class_samples) * np.sum((class_mean - global_mean) ** 2)
+                    
+                    # Noise/Variance across the 50 samples of the SAME keyword (We want this TINY)
+                    within_class_variance += np.sum((class_samples - class_mean) ** 2)
+                
+                # J = Between-Class / Within-Class (Adding 1e-5 to prevent division by zero)
+                fisher_score = between_class_variance / (within_class_variance + 1e-5)
+                
+                # Save the candidate
+                flattened_mean_shape = np.concatenate([np.mean(class_footprints[c], axis=0) for c in kw_classes])
+                candidate_features.append(flattened_mean_shape)
+                candidate_fisher_scores.append(fisher_score)
                 candidate_meta.append((b_idx, VALID_BETAS[b_idx], t_mult, v_th, pdm_add, v_strs[b_idx]))
 
-    candidate_class_footprints = np.array(candidate_class_footprints)
-    print(f"\nFound {len(candidate_class_footprints)} viable acoustic feature extractors.")
+    candidate_features = np.array(candidate_features)
+    candidate_fisher_scores = np.array(candidate_fisher_scores)
     
-    if len(candidate_class_footprints) < 6:
-        print("Error: Not enough viable configurations found. Check audio data.")
+    print(f"\nFound {len(candidate_features)} viable acoustic feature extractors.")
+    if len(candidate_features) < 6:
+        print("Error: Not enough viable configurations found.")
         return
         
-    print("Executing Inter-Class Phonetic Separability Search for best 6 channels...")
+    print("Executing Information Theory Search (Fisher Maximize + Correlation Penalty)...")
     selected_indices = []
-    num_kw = len(kw_classes)
     
-    for step in range(6):
-        best_min_dist = -1.0
+    # 1. Pick the absolute best channel in the entire search space (Highest Fisher Score)
+    best_initial = np.argmax(candidate_fisher_scores)
+    selected_indices.append(best_initial)
+    
+    # 2. Greedily pick the next 5 channels
+    for step in range(5):
+        best_net_score = -1.0
         best_candidate = -1
         
-        for i in range(len(candidate_class_footprints)):
+        for i in range(len(candidate_features)):
             if i in selected_indices: continue
             
-            current_set = selected_indices + [i]
+            # --- LAW 2: MINIMIZE REDUNDANCY ---
+            # Calculate the maximum Pearson Correlation between this channel and the ones we already picked
+            max_correlation = 0.0
+            v_candidate = candidate_features[i]
             
-            # Extract matrices for current combination -> Shape: (len(current_set), num_kw, 20)
-            combined_images = candidate_class_footprints[current_set]
+            for sel_idx in selected_indices:
+                v_selected = candidate_features[sel_idx]
+                
+                # Pearson Correlation Coefficient (1.0 = identical shape, 0.0 = completely orthogonal)
+                corr = np.corrcoef(v_candidate, v_selected)[0, 1]
+                if np.isnan(corr): corr = 1.0 # Penalize flatlines
+                max_correlation = max(max_correlation, abs(corr))
             
-            # Reshape to -> (num_kw, len(current_set) * 20) to form a unified temporal image per class
-            combined_images = combined_images.transpose(1, 0, 2).reshape(num_kw, -1)
+            # The True Information Metric: High Fisher Score, but heavily penalized if it looks like an existing channel
+            net_score = candidate_fisher_scores[i] * (1.0 - max_correlation)
             
-            min_dist_between_classes = 9999.0
-            
-            # Measure pairwise distance between every combination of keywords
-            for c1 in range(num_kw):
-                for c2 in range(c1 + 1, num_kw):
-                    v1 = combined_images[c1]
-                    v2 = combined_images[c2]
-                    
-                    norm1 = np.linalg.norm(v1) + 1e-8
-                    norm2 = np.linalg.norm(v2) + 1e-8
-                    cosine_sim = np.dot(v1, v2) / (norm1 * norm2)
-                    dist = 1.0 - cosine_sim
-                    
-                    if dist < min_dist_between_classes:
-                        min_dist_between_classes = dist
-                        
-            # Maximize the distance between the two most easily confused keywords
-            if min_dist_between_classes > best_min_dist:
-                best_min_dist = min_dist_between_classes
+            if net_score > best_net_score:
+                best_net_score = net_score
                 best_candidate = i
                 
         selected_indices.append(best_candidate)
-        print(f"Step {step+1}/6 | Selected Candidate {best_candidate} | Hardest Keyword Pair Distance: {best_min_dist:.4f}")
-        
+        print(f"Step {step+2}/6 | Added Ch {best_candidate} | Fisher Info: {candidate_fisher_scores[best_candidate]:.2f} | Net Score: {best_net_score:.2f}")
+
     print("\n=======================================================")
     print("      🏆 OPTIMAL 6-CHANNEL COCHLEA GENERATED 🏆")
     print("=======================================================\n")
@@ -234,6 +255,7 @@ def main():
         
         print(f"// --- Channel {ch} ---")
         print(f"// Beta: {beta_val:.4f} | Thresh Mult: {t_mult} | Reg Size: {reg_size}-bit (Frac: {FRAC_BITS[b_idx]})")
+        print(f"// Fisher Discriminant Ratio (Information): {candidate_fisher_scores[idx]:.2f}")
         print(f"wire [{reg_size-1}:0] next_v_{ch} = {v_str.replace('mem', f'mem_{ch}')} + (pdm_in ? {reg_size}'d{pdm_add} : {reg_size}'d0);")
         print(f"wire fired_{ch} = (next_v_{ch} >= {reg_size}'d{v_th});\n")
         

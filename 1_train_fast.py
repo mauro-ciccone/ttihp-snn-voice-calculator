@@ -11,9 +11,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._back
 
 # --- SETUP ---
 # Update this to match your newly created folder from 0_init.py!
-TARGET_FOLDER = "experiments/0914_1219_80_neurons_harsh_continous" 
-MODEL_NAME = "model_00_init.pth"
-EPOCHS_TO_RUN = 21
+TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
+MODEL_NAME = "model_best.pth"
+EPOCHS_TO_RUN = 100
 # -------------
 
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):

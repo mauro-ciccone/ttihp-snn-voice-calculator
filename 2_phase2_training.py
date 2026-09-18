@@ -12,9 +12,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._back
 
 # --- SETUP ---
 # Update this to match your newly created folder from 0_init.py!
-TARGET_FOLDER = "experiments/0914_1219_80_neurons_harsh_continous" 
-MODEL_NAME = "model_00_init.pth"
-EPOCHS_TO_RUN = 21
+TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
+MODEL_NAME = "model_best.pth"
+EPOCHS_TO_RUN = 0
 # -------------
 
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
@@ -131,6 +131,7 @@ def main():
     
     best_test_acc = 0.0
     best_combined_acc = 0.0
+    best_acc = 0.0
     start_epoch = 0
     checkpoint = {}  # FIXED: Default dictionary prevents UnboundLocalError
 
@@ -220,7 +221,7 @@ def main():
             # =======================================================
             
             # --- Helper: Quantization & Masking for a given layer ---
-            def quantize_and_mask(weight, max_val=31.0):
+            def quantize_and_mask(weight, max_val=127.0):
                 w_abs = torch.abs(weight)
                 delta = (torch.quantile(w_abs.detach(), 0.985) + 1e-8) / max_val
                 w_scaled = weight / delta
@@ -228,29 +229,48 @@ def main():
                 loss_q = (1.0 - torch.cos(2.0 * math.pi * w_scaled)).mean()
                 # Wire mask (Severed if absolute digital weight < 0.5)
                 mask = torch.sigmoid(10.0 * (torch.abs(w_scaled) - 0.5))
-                return loss_q, mask
+                return loss_q, mask, delta   # <--- THE FIX: Return delta
 
-            # 1. Dynamic Grid Quantization (Both Layers)
-            loss_q_hid, mask_hid = quantize_and_mask(model.fc_hidden.weight) # type: ignore
-            loss_q_out, mask_out = quantize_and_mask(model.fc_out.weight)
-            loss = loss + 0.1 * (loss_q_hid + loss_q_out)
+            # 1. Dynamic Grid Quantization (All Physical Layers)
+            loss_q_in, mask_in, delta_in = quantize_and_mask(model.fc_in.weight)
+            loss_q_rec, mask_rec, delta_rec = quantize_and_mask(model.fc_rec.weight)
+            loss_q_out, mask_out, delta_out = quantize_and_mask(model.fc_out.weight)
+            loss = loss + 0.1 * (loss_q_in + loss_q_rec + loss_q_out)
 
             # 2. Strict Beta Snapping (Both Layers)
-            all_betas = torch.cat([model.lif_hidden.beta, model.lif_out.beta])
+            beta_hid = model.lif_hidden.beta.view(-1)
+            beta_out = model.lif_out.beta.view(-1)
+            all_betas = torch.cat([beta_hid, beta_out])
+            
             beta_dists = (all_betas.unsqueeze(1) - valid_betas.unsqueeze(0)) ** 2
             loss_beta_snap = beta_dists.min(dim=1)[0].mean()
             loss = loss + 10.0 * loss_beta_snap
 
             # 3. Unified Global Silicon Budget (The Area Wall)
-            # Differentiable hardware costs
             beta_weights = torch.nn.functional.softmax(-1000.0 * beta_dists, dim=1)
             soft_frac_bits = (beta_weights * frac_bits).sum(dim=1)
             soft_alu_count = (beta_weights * alu_costs).sum(dim=1)
 
-            # Membrane register sizes
-            all_thresholds = torch.cat([model.lif_hidden.threshold, model.lif_out.threshold])
-            int_bits = torch.clamp(torch.log2(all_thresholds + 1.0), min=1.0)
-            total_bits = int_bits + soft_frac_bits
+            # --- THE FIX: True Hardware Register Sizing ---
+            # The hidden layer receives inputs from fc_in and fc_rec. 
+            # We use the smallest delta to ensure the physical register is large enough for both scales.
+            delta_hid = torch.min(delta_in, delta_rec)
+            
+            hw_thresh_hid = 1.0 / delta_hid
+            hw_thresh_out = 1.0 / delta_out
+            
+            # Calculate required integer bits for the threshold scale
+            int_bits_hid = torch.clamp(torch.log2(hw_thresh_hid + 1.0), min=1.0)
+            int_bits_out = torch.clamp(torch.log2(hw_thresh_out + 1.0), min=1.0)
+            
+            # Expand to match the number of neurons
+            int_bits_hid_expanded = int_bits_hid.expand(config["num_hidden"])
+            int_bits_out_expanded = int_bits_out.expand(config["num_outputs"])
+            
+            all_int_bits = torch.cat([int_bits_hid_expanded, int_bits_out_expanded])
+            
+            # Total Register Size = Integer Bits (Threshold scaling) + Fractional Bits (Beta leakage)
+            total_bits = all_int_bits + soft_frac_bits
 
             # Compute exact Area in um^2
             dff_area_um2 = (total_bits * AREA_DFF).sum()
@@ -259,14 +279,15 @@ def main():
 
             # Continuous area pressure + Quadratic wall at 60k um2
             loss_area_pressure = 1e-6 * total_area_um2
-            loss_area_wall = torch.relu(total_area_um2 - 60000.0) ** 2
+            loss_area_wall = torch.relu(total_area_um2 - 120000.0) ** 2
             loss = loss + loss_area_pressure + (1e-5 * loss_area_wall)
 
             # --- 4. Single-Spike-Safe Temporal Dispersion ---
-            # Input Bus Collisions (x shape: [B, T, 8])
-            arrivals_hid = torch.matmul(x, mask_hid.t())
+            arrivals_in = torch.matmul(x, mask_in.t())
+            arrivals_rec = torch.matmul(spk_hidden, mask_rec.t())
+            arrivals_hid = arrivals_in + arrivals_rec 
             
-            # Hidden Bus Collisions (spk_hidden shape: [B, T, 80])
+            # Hidden -> Output Bus Collisions 
             arrivals_out = torch.matmul(spk_hidden, mask_out.t())
             
             # ReLU(-1.0) allows 1 spike without penalty. Only >=2 spikes incur loss.
@@ -303,8 +324,8 @@ def main():
 
         print(f"Epoch {epoch+1:02d}/{start_epoch + EPOCHS_TO_RUN} | Train: {train_acc:.1f}% | Test: {test_acc:.1f}% | LR: {current_lr:.6f} | Loss: {epoch_loss:.2f}")
 
-        if average_perf > best_combined_acc:
-            best_combined_acc = average_perf
+        if train_acc > best_acc:
+            best_acc = train_acc
             best_model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
             
             saved_checkpoint = {

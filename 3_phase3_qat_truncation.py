@@ -45,7 +45,7 @@ def get_snapped_hardware(beta_tensor, device):
     return valid_betas[best_indices], frac_bits[best_indices]
 
 # ======================================================================
-# Phase 3 QAT: Integers + Hardware Betas + Sub-Integer Truncation
+# Phase 3 QAT: Integers + Betas + Truncation + SNAPPED THRESHOLDS
 # ======================================================================
 class Phase3QATNet(nn.Module):
     def __init__(self, orig_model, config, device):
@@ -76,9 +76,13 @@ class Phase3QATNet(nn.Module):
             self.beta_hid, self.frac_bits_hid = get_snapped_hardware(beta_hid_raw, device)
             self.beta_out, self.frac_bits_out = get_snapped_hardware(beta_out_raw, device)
             
-            # --- Physical LSB bounds for the Hardware Register ---
+            # Physical LSB bounds
             self.lsb_hid = self.delta_hid / (2.0 ** self.frac_bits_hid)
             self.lsb_out = self.delta_out / (2.0 ** self.frac_bits_out)
+
+            # --- ISOLATED CONSTRAINT: HARDWARE-SNAPPED THRESHOLDS ---
+            self.thresh_hid = torch.round(1.0 / self.delta_hid) * self.delta_hid
+            self.thresh_out = torch.round(1.0 / self.delta_out) * self.delta_out
 
     def forward(self, x):
         batch = x.size(0)
@@ -110,23 +114,23 @@ class Phase3QATNet(nn.Module):
             
             # Verilog-accurate bit-shift truncation (Epsilon-shielded floor)
             hw_mem_hid = torch.floor((ideal_mem_hid / self.lsb_hid.unsqueeze(0)) + 1e-5) * self.lsb_hid.unsqueeze(0)
-            
-            # Inject STE so gradients survive the grid snap
             mem_hid = (hw_mem_hid - ideal_mem_hid).detach() + ideal_mem_hid
             
-            spk_hid = self.spike_grad(mem_hid - 1.0)
+            # Evaluate against HARDWARE INTEGER THRESHOLD
+            spk_hid = self.spike_grad(mem_hid - self.thresh_hid)
             mem_hid = mem_hid * (1.0 - spk_hid.detach())  # Reset mechanism
             spk_hid_rec.append(spk_hid)
             
             # --- 2. OUTPUT INTEGRATION & LSB REGISTER SNAP ---
             cur_out = torch.matmul(spk_hid, w_out_eff.t())
-            
             ideal_mem_out = (mem_out * self.beta_out.unsqueeze(0)) + cur_out
+            
             # Verilog-accurate bit-shift truncation (Epsilon-shielded floor)
             hw_mem_out = torch.floor((ideal_mem_out / self.lsb_out.unsqueeze(0)) + 1e-5) * self.lsb_out.unsqueeze(0)
             mem_out = (hw_mem_out - ideal_mem_out).detach() + ideal_mem_out
             
-            spk_out = self.spike_grad(mem_out - 1.0)
+            # Evaluate against HARDWARE INTEGER THRESHOLD
+            spk_out = self.spike_grad(mem_out - self.thresh_out)
             mem_out = mem_out * (1.0 - spk_out.detach())
             spk_out_rec.append(spk_out)
             
@@ -169,7 +173,7 @@ def main():
     ledger = load_ledger(TARGET_FOLDER)
     config = ledger["base_config"]
     
-    print(f"\n=== Training Pipeline (Phase 3: Progressive QAT [Truncation Added]) ===")
+    print(f"\n=== Training Pipeline (Phase 3: Hardware Threshold Verification) ===")
     
     train_loader, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
     idx_noise = labels_map.get("noise", 6)
@@ -190,7 +194,7 @@ def main():
         orig_model.load_state_dict(base_state, strict=False)
         print(">>> Loaded base Phase 2 model for correct hardware betas.")
 
-    # 2. Wrap in Phase3QATNet (this extracts and locks the correct snapped betas)
+    # 2. Wrap in Phase3QATNet 
     model = Phase3QATNet(orig_model, config, device).to(device)
     
     # 3. Load Phase 3 checkpoint weights
@@ -213,7 +217,7 @@ def main():
     else:
         print(">>> Starting fresh from Phase 2 baseline weights.")
     
-    # 1e-6 LR fine-tunes from the stable Phase 3 checkpoint
+    # continue from the last lr checkpoint
     optimizer = torch.optim.Adam(model.parameters(), lr=3.65e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-7)
     

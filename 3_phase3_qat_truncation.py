@@ -108,8 +108,8 @@ class Phase3QATNet(nn.Module):
             # --- 1. HIDDEN INTEGRATION & LSB REGISTER SNAP ---
             ideal_mem_hid = (mem_hid * self.beta_hid.unsqueeze(0)) + cur_in + cur_rec
             
-            # Hardware Grid Snap (Replaces the broken floor logic)
-            hw_mem_hid = torch.round(ideal_mem_hid / self.lsb_hid.unsqueeze(0)) * self.lsb_hid.unsqueeze(0)
+            # Verilog-accurate bit-shift truncation (Epsilon-shielded floor)
+            hw_mem_hid = torch.floor((ideal_mem_hid / self.lsb_hid.unsqueeze(0)) + 1e-5) * self.lsb_hid.unsqueeze(0)
             
             # Inject STE so gradients survive the grid snap
             mem_hid = (hw_mem_hid - ideal_mem_hid).detach() + ideal_mem_hid
@@ -122,7 +122,8 @@ class Phase3QATNet(nn.Module):
             cur_out = torch.matmul(spk_hid, w_out_eff.t())
             
             ideal_mem_out = (mem_out * self.beta_out.unsqueeze(0)) + cur_out
-            hw_mem_out = torch.round(ideal_mem_out / self.lsb_out.unsqueeze(0)) * self.lsb_out.unsqueeze(0)
+            # Verilog-accurate bit-shift truncation (Epsilon-shielded floor)
+            hw_mem_out = torch.floor((ideal_mem_out / self.lsb_out.unsqueeze(0)) + 1e-5) * self.lsb_out.unsqueeze(0)
             mem_out = (hw_mem_out - ideal_mem_out).detach() + ideal_mem_out
             
             spk_out = self.spike_grad(mem_out - 1.0)

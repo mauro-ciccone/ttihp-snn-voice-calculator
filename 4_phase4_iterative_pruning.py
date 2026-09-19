@@ -4,15 +4,15 @@ import torch.nn as nn
 from tqdm import tqdm
 from dataset_cached import get_cached_dataloaders
 from model import FastSpikingNet
-from utils_ledger import load_ledger, get_latest_commit, append_commit
+from utils_ledger import load_ledger
 from snntorch import surrogate
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-MODEL_NAME = "phase3_85acc.pth"
-EPOCHS_TO_RUN = 50
+MODEL_NAME = "acc85.5_sparsity22.2.pth"
+EPOCHS_TO_RUN = 200
 
 # --- HARDWARE CONSTANTS ---
 VALID_BETAS = torch.tensor([
@@ -45,9 +45,9 @@ def get_snapped_hardware(beta_tensor, device):
     return valid_betas[best_indices], frac_bits[best_indices]
 
 # ======================================================================
-# Phase 3 QAT: Integers + Betas + Truncation + SNAPPED THRESHOLDS
+# Phase 4 QAT: Sparsity + Hardware Constraints
 # ======================================================================
-class Phase3QATNet(nn.Module):
+class Phase4QATSparseNet(nn.Module):
     def __init__(self, orig_model, config, device):
         super().__init__()
         self.device = device
@@ -65,7 +65,7 @@ class Phase3QATNet(nn.Module):
         self.mask_in = nn.Parameter(torch.ones_like(self.w_in), requires_grad=False)
         self.mask_rec = nn.Parameter(torch.ones_like(self.w_rec), requires_grad=False)
         self.mask_out = nn.Parameter(torch.ones_like(self.w_out), requires_grad=False)
-        
+
         # 2. Hardware Extraction
         with torch.no_grad():
             def calc_delta(w):
@@ -81,15 +81,13 @@ class Phase3QATNet(nn.Module):
             self.beta_hid, self.frac_bits_hid = get_snapped_hardware(beta_hid_raw, device)
             self.beta_out, self.frac_bits_out = get_snapped_hardware(beta_out_raw, device)
             
-            # Physical LSB bounds
             self.lsb_hid = self.delta_hid / (2.0 ** self.frac_bits_hid)
             self.lsb_out = self.delta_out / (2.0 ** self.frac_bits_out)
 
-            # --- ISOLATED CONSTRAINT: HARDWARE-SNAPPED THRESHOLDS ---
             self.thresh_hid = torch.round(1.0 / self.delta_hid) * self.delta_hid
             self.thresh_out = torch.round(1.0 / self.delta_out) * self.delta_out
 
-            # --- NEW: PARETO OPTIMAL REGISTER OVERFLOW LIMITS ---
+            # --- PARETO OPTIMAL REGISTER OVERFLOW LIMITS ---
             pareto_path = os.path.join(TARGET_FOLDER, "pareto_config_84.0.pt")
             if os.path.exists(pareto_path):
                 pareto_cfg = torch.load(pareto_path, map_location=device)
@@ -105,22 +103,21 @@ class Phase3QATNet(nn.Module):
     def forward(self, x):
         batch = x.size(0)
         time_steps = x.size(1)
-
+        
         # --- PHASE 4: APPLY TOPOLOGY MASK ---
         w_in_masked = self.w_in * self.mask_in
         w_rec_masked = self.w_rec * self.mask_rec
         w_out_masked = self.w_out * self.mask_out
-        
+
         # --- STE Weight Quantization ---
-        w_in_ste = (torch.round(self.w_in / self.delta_in) - self.w_in / self.delta_in).detach() + self.w_in / self.delta_in
-        w_rec_ste = (torch.round(self.w_rec / self.delta_rec) - self.w_rec / self.delta_rec).detach() + self.w_rec / self.delta_rec
-        w_out_ste = (torch.round(self.w_out / self.delta_out) - self.w_out / self.delta_out).detach() + self.w_out / self.delta_out
+        w_in_ste = (torch.round(w_in_masked / self.delta_in) - w_in_masked / self.delta_in).detach() + w_in_masked / self.delta_in
+        w_rec_ste = (torch.round(w_rec_masked / self.delta_rec) - w_rec_masked / self.delta_rec).detach() + w_rec_masked / self.delta_rec
+        w_out_ste = (torch.round(w_out_masked / self.delta_out) - w_out_masked / self.delta_out).detach() + w_out_masked / self.delta_out
         
         w_in_eff = w_in_ste * self.delta_in
         w_rec_eff = w_rec_ste * self.delta_rec
         w_out_eff = w_out_ste * self.delta_out
 
-        # Manual State Initialization
         mem_hid = torch.zeros(batch, self.num_hidden, device=self.device)
         mem_out = torch.zeros(batch, self.num_outputs, device=self.device)
         spk_hid = torch.zeros(batch, self.num_hidden, device=self.device)
@@ -132,35 +129,29 @@ class Phase3QATNet(nn.Module):
             cur_in = torch.matmul(x[:, step, :], w_in_eff.t())
             cur_rec = torch.matmul(spk_hid, w_rec_eff.t())
             
-            # --- 1. HIDDEN INTEGRATION & LSB REGISTER SNAP ---
+            # --- 1. HIDDEN INTEGRATION ---
             ideal_mem_hid = (mem_hid * self.beta_hid.unsqueeze(0)) + cur_in + cur_rec
             
-            # Clamp to Signed Register Limits (Preserving Inhibition!)
             limit_hid = (self.max_mem_hid * self.lsb_hid).unsqueeze(0)
             ideal_mem_hid = torch.clamp(ideal_mem_hid, min=-limit_hid, max=limit_hid)
             
-            # Verilog-accurate bit-shift truncation (Epsilon-shielded floor)
             hw_mem_hid = torch.floor((ideal_mem_hid / self.lsb_hid.unsqueeze(0)) + 1e-5) * self.lsb_hid.unsqueeze(0)
             mem_hid = (hw_mem_hid - ideal_mem_hid).detach() + ideal_mem_hid
             
-            # Evaluate against HARDWARE INTEGER THRESHOLD
             spk_hid = self.spike_grad(mem_hid - self.thresh_hid)
-            mem_hid = mem_hid * (1.0 - spk_hid.detach())  # Reset mechanism
+            mem_hid = mem_hid * (1.0 - spk_hid.detach()) 
             spk_hid_rec.append(spk_hid)
             
-            # --- 2. OUTPUT INTEGRATION & LSB REGISTER SNAP ---
+            # --- 2. OUTPUT INTEGRATION ---
             cur_out = torch.matmul(spk_hid, w_out_eff.t())
             ideal_mem_out = (mem_out * self.beta_out.unsqueeze(0)) + cur_out
             
-            # Clamp to Signed Register Limits (Preserving Inhibition!)
             limit_out = (self.max_mem_out * self.lsb_out).unsqueeze(0)
             ideal_mem_out = torch.clamp(ideal_mem_out, min=-limit_out, max=limit_out)
             
-            # Verilog-accurate bit-shift truncation (Epsilon-shielded floor)
             hw_mem_out = torch.floor((ideal_mem_out / self.lsb_out.unsqueeze(0)) + 1e-5) * self.lsb_out.unsqueeze(0)
             mem_out = (hw_mem_out - ideal_mem_out).detach() + ideal_mem_out
             
-            # Evaluate against HARDWARE INTEGER THRESHOLD
             spk_out = self.spike_grad(mem_out - self.thresh_out)
             mem_out = mem_out * (1.0 - spk_out.detach())
             spk_out_rec.append(spk_out)
@@ -179,7 +170,6 @@ def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
             spk_out, spk_hidden = model(x)
             spike_counts = spk_out.sum(dim=1)
             
-            # Dynamic hardware inference: silence if under 10 spikes
             max_spikes, raw_preds = spike_counts.max(dim=1)
             preds = torch.where(max_spikes < 10, torch.tensor(idx_silence, device=device), raw_preds)
             
@@ -204,7 +194,7 @@ def main():
     ledger = load_ledger(TARGET_FOLDER)
     config = ledger["base_config"]
     
-    print(f"\n=== Training Pipeline (Phase 3: Hardware Threshold Verification) ===")
+    print(f"\n=== Training Pipeline (Phase 4: Topology Pruning & Sparsity) ===")
     
     train_loader, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
     idx_noise = labels_map.get("noise", 6)
@@ -212,27 +202,22 @@ def main():
     inv_labels = {v: k for k, v in labels_map.items()}
     num_classes = config["num_outputs"]
     
-    # 1. Initialize base model and load Phase 2 weights to capture the correct trained betas
+    # Ensure dedicated save folder exists
+    sparsity_dir = os.path.join(TARGET_FOLDER, "sparsity_training")
+    os.makedirs(sparsity_dir, exist_ok=True)
+    
     orig_model = FastSpikingNet(
         num_inputs=config["num_inputs"], num_hidden=config["num_hidden"],
         num_outputs=config["num_outputs"], beta=config["beta"]
     ).to(device)
     
-    base_model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
-    if os.path.exists(base_model_path):
-        base_ckpt = torch.load(base_model_path, map_location=device)
-        base_state = base_ckpt.get("model_state_dict", base_ckpt)
-        orig_model.load_state_dict(base_state, strict=False)
-        print(">>> Loaded base Phase 2 model for correct hardware betas.")
+    base_ckpt = torch.load(os.path.join(TARGET_FOLDER, "model_best.pth"), map_location=device)
+    orig_model.load_state_dict(base_ckpt.get("model_state_dict", base_ckpt), strict=False)
 
-    # 2. Wrap in Phase3QATNet 
-    model = Phase3QATNet(orig_model, config, device).to(device)
+    model = Phase4QATSparseNet(orig_model, config, device).to(device)
     
-    # 3. Load Phase 3 checkpoint weights
     target_checkpoint_path = os.path.join(TARGET_FOLDER, MODEL_NAME)
-    best_test_acc = 0.0
-    
-    if MODEL_NAME != "model_best.pth" and os.path.exists(target_checkpoint_path):
+    if os.path.exists(target_checkpoint_path):
         print(f">>> Loading Phase 3 checkpoint weights from {MODEL_NAME}...")
         p3_ckpt = torch.load(target_checkpoint_path, map_location=device)
         p3_state = p3_ckpt.get("model_state_dict", p3_ckpt)
@@ -241,16 +226,24 @@ def main():
             model.w_in.data.copy_(p3_state["w_in"])
             model.w_rec.data.copy_(p3_state["w_rec"])
             model.w_out.data.copy_(p3_state["w_out"])
-            best_test_acc = p3_ckpt.get("best_test_acc", 0.0)
-            print(f">>> Successfully loaded Phase 3 weights | Previous Best Acc: {best_test_acc:.1f}%")
+            
+            # If resuming a partially sparse model, copy the masks too
+            if "mask_in" in p3_state:
+                model.mask_in.data.copy_(p3_state["mask_in"])
+                model.mask_rec.data.copy_(p3_state["mask_rec"])
+                model.mask_out.data.copy_(p3_state["mask_out"])
+                print(">>> Resumed existing topology masks.")
         else:
-            print(">>> Warning: 'w_in' not found in checkpoint state dict, keeping initialized weights.")
-    else:
-        print(">>> Starting fresh from Phase 2 baseline weights.")
+            print(">>> Warning: 'w_in' not found in checkpoint state dict.")
     
-    # continue from the last lr checkpoint
-    optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-7)
+    # 3e-4 keeps the network plastic enough to route around holes
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-10)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-12)
+    
+    # Starting Sparsity Tracking
+    total_params = model.w_in.numel() + model.w_rec.numel() + model.w_out.numel()
+
+    sparsity_pct = 0.0
     
     for epoch in range(EPOCHS_TO_RUN):
         model.train()
@@ -311,39 +304,50 @@ def main():
         train_acc = (correct / total) * 100 if total > 0 else 0.0
         epoch_loss = total_loss / batches if batches > 0 else 0.0
         
+        # Evaluate BEFORE pruning
         test_acc = run_evaluation(model, test_loader, device, idx_noise, idx_silence)[0]
 
-        # --- PHASE 4: ITERATIVE MAGNITUDE PRUNING ---
-        with torch.no_grad():
-            def apply_sparsity_mask(weight, mask, target_drop_rate=0.005):
-                active_w = torch.abs(weight * mask)
-                alive_elements = active_w[active_w > 0]
-                if len(alive_elements) > 0:
-                    # Find the threshold value for the bottom X% of alive wires
-                    k = max(1, int(len(alive_elements) * target_drop_rate))
-                    threshold = torch.kthvalue(alive_elements.view(-1), k).values
-                    # Update mask to kill anything below the threshold
-                    new_mask = (active_w > threshold).float()
-                    mask.data.copy_(new_mask)
+        
 
-            apply_sparsity_mask(model.w_in, model.mask_in)
-            apply_sparsity_mask(model.w_rec, model.mask_rec)
-            apply_sparsity_mask(model.w_out, model.mask_out)
+        if epoch % 3 == 0:
+            # --- PHASE 4: ITERATIVE MAGNITUDE PRUNING ---
+            with torch.no_grad():
+                def apply_sparsity_mask(weight, mask, target_drop_rate=0.005):
+                    active_w = torch.abs(weight * mask)
+                    alive_elements = active_w[active_w > 0]
+                    if len(alive_elements) > 0:
+                            k = max(1, int(len(alive_elements) * target_drop_rate))
+                            threshold = torch.kthvalue(alive_elements.view(-1), k).values
+                            new_mask = (active_w > threshold).float()
+                            mask.data.copy_(new_mask)
             
-            total_params = model.w_in.numel() + model.w_rec.numel() + model.w_out.numel()
-            surviving = model.mask_in.sum() + model.mask_rec.sum() + model.mask_out.sum()
-            sparsity_pct = (1.0 - surviving / total_params) * 100
-            print(f"   ✂️ Topology Pruned | Network Sparsity: {sparsity_pct:.1f}% | Active Wires: {int(surviving.item())}/{total_params}")
+                apply_sparsity_mask(model.w_in, model.mask_in)
+                apply_sparsity_mask(model.w_rec, model.mask_rec)
+                apply_sparsity_mask(model.w_out, model.mask_out)
+                        
+                surviving = model.mask_in.sum() + model.mask_rec.sum() + model.mask_out.sum()
+                sparsity_pct = (1.0 - surviving / total_params) * 100
+                print(f"   ✂️ Topology Pruned | Network Sparsity: {sparsity_pct:.1f}% | Active Wires: {int(surviving.item())}/{total_params}")
+
+        # --- DEDICATED SAVER (EVERY EPOCH) ---
+        save_name = f"acc{train_acc:.1f}_sparsity{sparsity_pct:.1f}.pth"
+        save_path = os.path.join(sparsity_dir, save_name)
+        
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "test_acc": test_acc,
+            "sparsity_pct": sparsity_pct,
+            "mask_in": model.mask_in,
+            "mask_rec": model.mask_rec,
+            "mask_out": model.mask_out
+        }, save_path)
+        print(f"   💾 Saved topology checkpoint: {save_name}")
 
         scheduler.step(epoch_loss) 
         current_lr = optimizer.param_groups[0]['lr']
 
         print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train: {train_acc:.1f}% | Test: {test_acc:.1f}% | LR: {current_lr:.6f} | Loss: {epoch_loss:.2f}")
 
-        if train_acc >= best_test_acc:
-            best_test_acc = train_acc
-            torch.save({"model_state_dict": model.state_dict(), "best_test_acc": best_test_acc}, os.path.join(TARGET_FOLDER, "phase4_model_best.pth"))
-            print(f"   🌟 New Best Phase 4 Acc! Saved phase4_model_best.pth")
 
     # ======================================================================
     # FINAL DIAGNOSTICS BLOCK

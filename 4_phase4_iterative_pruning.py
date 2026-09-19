@@ -11,8 +11,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-MODEL_NAME = "phase3_84.6acc.pth"
-EPOCHS_TO_RUN = 20
+MODEL_NAME = "phase3_85acc.pth"
+EPOCHS_TO_RUN = 50
 
 # --- HARDWARE CONSTANTS ---
 VALID_BETAS = torch.tensor([
@@ -61,6 +61,11 @@ class Phase3QATNet(nn.Module):
         self.w_rec = nn.Parameter(orig_model.fc_rec.weight.data.clone())
         self.w_out = nn.Parameter(orig_model.fc_out.weight.data.clone())
         
+        # --- PHASE 4: PERMANENT TOPOLOGY MASKS ---
+        self.mask_in = nn.Parameter(torch.ones_like(self.w_in), requires_grad=False)
+        self.mask_rec = nn.Parameter(torch.ones_like(self.w_rec), requires_grad=False)
+        self.mask_out = nn.Parameter(torch.ones_like(self.w_out), requires_grad=False)
+        
         # 2. Hardware Extraction
         with torch.no_grad():
             def calc_delta(w):
@@ -100,6 +105,11 @@ class Phase3QATNet(nn.Module):
     def forward(self, x):
         batch = x.size(0)
         time_steps = x.size(1)
+
+        # --- PHASE 4: APPLY TOPOLOGY MASK ---
+        w_in_masked = self.w_in * self.mask_in
+        w_rec_masked = self.w_rec * self.mask_rec
+        w_out_masked = self.w_out * self.mask_out
         
         # --- STE Weight Quantization ---
         w_in_ste = (torch.round(self.w_in / self.delta_in) - self.w_in / self.delta_in).detach() + self.w_in / self.delta_in
@@ -239,7 +249,7 @@ def main():
         print(">>> Starting fresh from Phase 2 baseline weights.")
     
     # continue from the last lr checkpoint
-    optimizer = torch.optim.Adam(model.parameters(), lr=3.65e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-7)
     
     for epoch in range(EPOCHS_TO_RUN):
@@ -302,6 +312,29 @@ def main():
         epoch_loss = total_loss / batches if batches > 0 else 0.0
         
         test_acc = run_evaluation(model, test_loader, device, idx_noise, idx_silence)[0]
+
+        # --- PHASE 4: ITERATIVE MAGNITUDE PRUNING ---
+        with torch.no_grad():
+            def apply_sparsity_mask(weight, mask, target_drop_rate=0.005):
+                active_w = torch.abs(weight * mask)
+                alive_elements = active_w[active_w > 0]
+                if len(alive_elements) > 0:
+                    # Find the threshold value for the bottom X% of alive wires
+                    k = max(1, int(len(alive_elements) * target_drop_rate))
+                    threshold = torch.kthvalue(alive_elements.view(-1), k).values
+                    # Update mask to kill anything below the threshold
+                    new_mask = (active_w > threshold).float()
+                    mask.data.copy_(new_mask)
+
+            apply_sparsity_mask(model.w_in, model.mask_in)
+            apply_sparsity_mask(model.w_rec, model.mask_rec)
+            apply_sparsity_mask(model.w_out, model.mask_out)
+            
+            total_params = model.w_in.numel() + model.w_rec.numel() + model.w_out.numel()
+            surviving = model.mask_in.sum() + model.mask_rec.sum() + model.mask_out.sum()
+            sparsity_pct = (1.0 - surviving / total_params) * 100
+            print(f"   ✂️ Topology Pruned | Network Sparsity: {sparsity_pct:.1f}% | Active Wires: {int(surviving.item())}/{total_params}")
+
         scheduler.step(epoch_loss) 
         current_lr = optimizer.param_groups[0]['lr']
 
@@ -309,8 +342,8 @@ def main():
 
         if train_acc >= best_test_acc:
             best_test_acc = train_acc
-            torch.save({"model_state_dict": model.state_dict(), "best_test_acc": best_test_acc}, os.path.join(TARGET_FOLDER, "phase3_model_best.pth"))
-            print(f"   🌟 New Best Phase 3 Acc! Saved phase3_model_best.pth")
+            torch.save({"model_state_dict": model.state_dict(), "best_test_acc": best_test_acc}, os.path.join(TARGET_FOLDER, "phase4_model_best.pth"))
+            print(f"   🌟 New Best Phase 4 Acc! Saved phase4_model_best.pth")
 
     # ======================================================================
     # FINAL DIAGNOSTICS BLOCK

@@ -12,7 +12,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._back
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
 MODEL_NAME = "phase3_84.6acc.pth"
-EPOCHS_TO_RUN = 50
+EPOCHS_TO_RUN = 0
 
 # --- HARDWARE CONSTANTS ---
 VALID_BETAS = torch.tensor([
@@ -76,7 +76,7 @@ class Phase3QATNet(nn.Module):
             self.beta_hid, self.frac_bits_hid = get_snapped_hardware(beta_hid_raw, device)
             self.beta_out, self.frac_bits_out = get_snapped_hardware(beta_out_raw, device)
             
-            # --- REINTRODUCING: Physical LSB bounds for Sub-Integer Truncation ---
+            # --- Physical LSB bounds for the Hardware Register ---
             self.lsb_hid = self.delta_hid / (2.0 ** self.frac_bits_hid)
             self.lsb_out = self.delta_out / (2.0 ** self.frac_bits_out)
 
@@ -105,27 +105,26 @@ class Phase3QATNet(nn.Module):
             cur_in = torch.matmul(x[:, step, :], w_in_eff.t())
             cur_rec = torch.matmul(spk_hid, w_rec_eff.t())
             
-            # --- 1. HIDDEN INTEGRATION & TRUNCATION ---
-            ideal_leak_hid = mem_hid * self.beta_hid.unsqueeze(0)
-            hw_leak_hid = torch.floor(ideal_leak_hid / self.lsb_hid.unsqueeze(0)) * self.lsb_hid.unsqueeze(0)
+            # --- 1. HIDDEN INTEGRATION & LSB REGISTER SNAP ---
+            ideal_mem_hid = (mem_hid * self.beta_hid.unsqueeze(0)) + cur_in + cur_rec
             
-            # Use STE so gradients can backpropagate through the truncation floor
-            mem_hid = (hw_leak_hid - ideal_leak_hid).detach() + ideal_leak_hid
+            # Hardware Grid Snap (Replaces the broken floor logic)
+            hw_mem_hid = torch.round(ideal_mem_hid / self.lsb_hid.unsqueeze(0)) * self.lsb_hid.unsqueeze(0)
             
-            mem_hid = mem_hid + cur_in + cur_rec
+            # Inject STE so gradients survive the grid snap
+            mem_hid = (hw_mem_hid - ideal_mem_hid).detach() + ideal_mem_hid
+            
             spk_hid = self.spike_grad(mem_hid - 1.0)
             mem_hid = mem_hid * (1.0 - spk_hid.detach())  # Reset mechanism
             spk_hid_rec.append(spk_hid)
             
-            # --- 2. OUTPUT INTEGRATION & TRUNCATION ---
+            # --- 2. OUTPUT INTEGRATION & LSB REGISTER SNAP ---
             cur_out = torch.matmul(spk_hid, w_out_eff.t())
             
-            ideal_leak_out = mem_out * self.beta_out.unsqueeze(0)
-            hw_leak_out = torch.floor(ideal_leak_out / self.lsb_out.unsqueeze(0)) * self.lsb_out.unsqueeze(0)
+            ideal_mem_out = (mem_out * self.beta_out.unsqueeze(0)) + cur_out
+            hw_mem_out = torch.round(ideal_mem_out / self.lsb_out.unsqueeze(0)) * self.lsb_out.unsqueeze(0)
+            mem_out = (hw_mem_out - ideal_mem_out).detach() + ideal_mem_out
             
-            mem_out = (hw_leak_out - ideal_leak_out).detach() + ideal_leak_out
-            
-            mem_out = mem_out + cur_out
             spk_out = self.spike_grad(mem_out - 1.0)
             mem_out = mem_out * (1.0 - spk_out.detach())
             spk_out_rec.append(spk_out)
@@ -177,32 +176,45 @@ def main():
     inv_labels = {v: k for k, v in labels_map.items()}
     num_classes = config["num_outputs"]
     
+    # 1. Initialize base model and load Phase 2 weights to capture the correct trained betas
     orig_model = FastSpikingNet(
         num_inputs=config["num_inputs"], num_hidden=config["num_hidden"],
         num_outputs=config["num_outputs"], beta=config["beta"]
     ).to(device)
     
-    checkpoint = torch.load(os.path.join(TARGET_FOLDER, MODEL_NAME), map_location=device)
-    state_dict = checkpoint["model_state_dict"]
-    
-    if "w_in" in state_dict:
-        print(">>> Detected Phase 3 QAT checkpoint. Mapping weights back to base model...")
-        mapped_dict = {
-            "fc_in.weight": state_dict["w_in"],
-            "fc_rec.weight": state_dict["w_rec"],
-            "fc_out.weight": state_dict["w_out"]
-        }
-        # strict=False ignores the old snnTorch states which we no longer need
-        orig_model.load_state_dict(mapped_dict, strict=False)
-    else:
-        orig_model.load_state_dict(state_dict)
-    
+    base_model_path = os.path.join(TARGET_FOLDER, "model_best.pth")
+    if os.path.exists(base_model_path):
+        base_ckpt = torch.load(base_model_path, map_location=device)
+        base_state = base_ckpt.get("model_state_dict", base_ckpt)
+        orig_model.load_state_dict(base_state, strict=False)
+        print(">>> Loaded base Phase 2 model for correct hardware betas.")
+
+    # 2. Wrap in Phase3QATNet (this extracts and locks the correct snapped betas)
     model = Phase3QATNet(orig_model, config, device).to(device)
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=3.65e-4)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-6)
-    
+    # 3. Load Phase 3 checkpoint weights
+    target_checkpoint_path = os.path.join(TARGET_FOLDER, MODEL_NAME)
     best_test_acc = 0.0
+    
+    if MODEL_NAME != "model_best.pth" and os.path.exists(target_checkpoint_path):
+        print(f">>> Loading Phase 3 checkpoint weights from {MODEL_NAME}...")
+        p3_ckpt = torch.load(target_checkpoint_path, map_location=device)
+        p3_state = p3_ckpt.get("model_state_dict", p3_ckpt)
+        
+        if "w_in" in p3_state:
+            model.w_in.data.copy_(p3_state["w_in"])
+            model.w_rec.data.copy_(p3_state["w_rec"])
+            model.w_out.data.copy_(p3_state["w_out"])
+            best_test_acc = p3_ckpt.get("best_test_acc", 0.0)
+            print(f">>> Successfully loaded Phase 3 weights | Previous Best Acc: {best_test_acc:.1f}%")
+        else:
+            print(">>> Warning: 'w_in' not found in checkpoint state dict, keeping initialized weights.")
+    else:
+        print(">>> Starting fresh from Phase 2 baseline weights.")
+    
+    # 1e-6 LR fine-tunes from the stable Phase 3 checkpoint
+    optimizer = torch.optim.Adam(model.parameters(), lr=3.65e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-7)
     
     for epoch in range(EPOCHS_TO_RUN):
         model.train()
@@ -269,9 +281,9 @@ def main():
 
         print(f"Epoch {epoch+1:02d}/{EPOCHS_TO_RUN} | Train: {train_acc:.1f}% | Test: {test_acc:.1f}% | LR: {current_lr:.6f} | Loss: {epoch_loss:.2f}")
 
-        if test_acc >= best_test_acc:
-            best_test_acc = test_acc
-            torch.save({"model_state_dict": model.state_dict()}, os.path.join(TARGET_FOLDER, "phase3_model_best.pth"))
+        if train_acc >= best_test_acc:
+            best_test_acc = train_acc
+            torch.save({"model_state_dict": model.state_dict(), "best_test_acc": best_test_acc}, os.path.join(TARGET_FOLDER, "phase3_model_best.pth"))
             print(f"   🌟 New Best Phase 3 Acc! Saved phase3_model_best.pth")
 
     # ======================================================================

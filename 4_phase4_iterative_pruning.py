@@ -11,7 +11,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-MODEL_NAME = "acc85.7_sparsity22.9.pth"
+MODEL_NAME = "acc86.3_sparsity22.5.pth"
 EPOCHS_TO_RUN = 0
 
 # --- HARDWARE CONSTANTS ---
@@ -71,10 +71,18 @@ class Phase4QATSparseNet(nn.Module):
             def calc_delta(w):
                 return (torch.quantile(torch.abs(w), 0.985) + 1e-8) / 127.0
             
-            self.delta_in = calc_delta(self.w_in)
-            self.delta_rec = calc_delta(self.w_rec)
-            self.delta_out = calc_delta(self.w_out)
-            self.delta_hid = min(self.delta_in, self.delta_rec)
+            # Calculate the individual mathematical deltas
+            raw_delta_in = (torch.quantile(torch.abs(self.w_in), 0.985) + 1e-8) / 127.0
+            raw_delta_rec = (torch.quantile(torch.abs(self.w_rec), 0.985) + 1e-8) / 127.0
+            
+            # 🚨 FORCE THE UNIFIED HARDWARE LSB 🚨
+            # We take the maximum to ensure neither matrix clips out of the 8-bit bounds
+            self.global_delta = max(raw_delta_in, raw_delta_rec)
+            
+            self.delta_in = self.global_delta
+            self.delta_rec = self.global_delta
+            self.delta_hid = self.global_delta
+            self.delta_out = calc_delta(self.w_out) # Output layer has its own separate D-Flip-Flop registers
 
             beta_hid_raw = orig_model.lif_hidden.beta.data.clone()
             beta_out_raw = orig_model.lif_out.beta.data.clone()
@@ -237,7 +245,7 @@ def main():
             print(">>> Warning: 'w_in' not found in checkpoint state dict.")
     
     # 3e-4 keeps the network plastic enough to route around holes
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-8)
+    optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-12)
     
     # Starting Sparsity Tracking

@@ -16,3 +16,4 @@ google_audio/
 custom_audio/
 __pycache__/
 data_cache/
+experiments/0916_2317_6_neuron_cochlea_no_vier/base_spikes_cache.pt

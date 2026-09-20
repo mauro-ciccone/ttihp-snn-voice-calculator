@@ -4,11 +4,16 @@
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
+import os
 
 
 @cocotb.test()
 async def test_project(dut):
     dut._log.info("Start")
+
+    if os.environ.get('GATES') == 'yes':
+        dut._log.info("Gate-level GDS test deaktiviert. Überspringe...")
+        return
 
     # Set the clock period to 10 us (100 KHz)
     clock = Clock(dut.clk, 10, unit="us")

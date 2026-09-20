@@ -11,8 +11,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-MODEL_NAME = "phase3_84.6acc.pth"
-EPOCHS_TO_RUN = 20
+MODEL_NAME = "acc86.3_sparsity22.5.pth"
+EPOCHS_TO_RUN = 0
 
 # --- HARDWARE CONSTANTS ---
 VALID_BETAS = torch.tensor([

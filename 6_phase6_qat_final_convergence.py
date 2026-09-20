@@ -11,7 +11,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-MODEL_NAME = "acc85.7_sparsity22.9.pth"
+SPARSE_CHECKPOINT = "acc86.3_sparsity22.5.pth" # Update to your chosen sparse model!
 EPOCHS_TO_RUN = 0
 
 # --- HARDWARE CONSTANTS ---
@@ -45,9 +45,9 @@ def get_snapped_hardware(beta_tensor, device):
     return valid_betas[best_indices], frac_bits[best_indices]
 
 # ======================================================================
-# Phase 4 QAT: Sparsity + Hardware Constraints
+# Phase 6: Full Verilog Physical Simulation
 # ======================================================================
-class Phase4QATSparseNet(nn.Module):
+class Phase6QATFinalNet(nn.Module):
     def __init__(self, orig_model, config, device):
         super().__init__()
         self.device = device
@@ -61,15 +61,14 @@ class Phase4QATSparseNet(nn.Module):
         self.w_rec = nn.Parameter(orig_model.fc_rec.weight.data.clone())
         self.w_out = nn.Parameter(orig_model.fc_out.weight.data.clone())
         
-        # --- PHASE 4: PERMANENT TOPOLOGY MASKS ---
+        # 2. Topology Masks
         self.mask_in = nn.Parameter(torch.ones_like(self.w_in), requires_grad=False)
         self.mask_rec = nn.Parameter(torch.ones_like(self.w_rec), requires_grad=False)
         self.mask_out = nn.Parameter(torch.ones_like(self.w_out), requires_grad=False)
 
-        # 2. Hardware Extraction
+        # 3. Hardware ALU Extraction
         with torch.no_grad():
-            def calc_delta(w):
-                return (torch.quantile(torch.abs(w), 0.985) + 1e-8) / 127.0
+            def calc_delta(w): return (torch.quantile(torch.abs(w), 0.985) + 1e-8) / 127.0
             
             self.delta_in = calc_delta(self.w_in)
             self.delta_rec = calc_delta(self.w_rec)
@@ -87,29 +86,65 @@ class Phase4QATSparseNet(nn.Module):
             self.thresh_hid = torch.round(1.0 / self.delta_hid) * self.delta_hid
             self.thresh_out = torch.round(1.0 / self.delta_out) * self.delta_out
 
-            # --- PARETO OPTIMAL REGISTER OVERFLOW LIMITS ---
+            # 4. Pareto Register Caps
             pareto_path = os.path.join(TARGET_FOLDER, "pareto_config_84.0.pt")
-            if os.path.exists(pareto_path):
-                pareto_cfg = torch.load(pareto_path, map_location=device)
-                int_bits_hid = pareto_cfg["int_bits_hid"].to(device)
-                int_bits_out = pareto_cfg["int_bits_out"].to(device)
-                print(f">>> Loaded Pareto Hardware Bounds: {(int_bits_hid + self.frac_bits_hid).sum().item() + (int_bits_out + self.frac_bits_out).sum().item():.0f} Total DFFs")
-            else:
-                raise FileNotFoundError(f"Pareto config not found at {pareto_path}")
-
+            pareto_cfg = torch.load(pareto_path, map_location=device)
+            int_bits_hid = pareto_cfg["int_bits_hid"].to(device)
+            int_bits_out = pareto_cfg["int_bits_out"].to(device)
             self.max_mem_hid = (2.0 ** (int_bits_hid + self.frac_bits_hid)) - 1.0
             self.max_mem_out = (2.0 ** (int_bits_out + self.frac_bits_out)) - 1.0
+
+            # 5. OR-Gate Hardware Wiring Manifest
+            manifest_path = os.path.join(TARGET_FOLDER, "hardware_wiring.pt")
+            manifest = torch.load(manifest_path, map_location=device)
+            
+            num_all_inputs = config["num_inputs"] + config["num_hidden"]
+            self.pos_masks = nn.Parameter(torch.zeros(3, self.num_hidden, num_all_inputs), requires_grad=False)
+            self.neg_masks = nn.Parameter(torch.zeros(3, self.num_hidden, num_all_inputs), requires_grad=False)
+            
+            for i in range(self.num_hidden):
+                neuron_data = manifest["hidden_neurons"].get(i, {"pos_gates":[], "neg_gates":[]})
+                for g, gate_list in enumerate(neuron_data["pos_gates"]):
+                    if g >= 3: continue
+                    for src_type, src_idx in gate_list:
+                        global_idx = src_idx if src_type == 'in' else src_idx + config["num_inputs"]
+                        self.pos_masks[g, i, global_idx] = 1.0
+                for g, gate_list in enumerate(neuron_data["neg_gates"]):
+                    if g >= 3: continue
+                    for src_type, src_idx in gate_list:
+                        global_idx = src_idx if src_type == 'in' else src_idx + config["num_inputs"]
+                        self.neg_masks[g, i, global_idx] = 1.0
+            print(">>> Physical OR-Gate Routing Matrices Loaded.")
+
+    def simulate_or_buses(self, all_spikes, w_all_abs_int, gate_masks):
+        """Simulates parallel 8-bit bitwise OR gates across unipolar active synapses."""
+        batch = all_spikes.size(0)
+        num_gates = gate_masks.size(0)
+        total_sum = torch.zeros(batch, self.num_hidden, dtype=torch.int32, device=self.device)
+        
+        for g in range(num_gates):
+            # Mask isolates the specific connections physically routed to this OR-gate
+            w_gate = w_all_abs_int * gate_masks[g] 
+            active_w = all_spikes.unsqueeze(1).int() * w_gate.unsqueeze(0).int()
+            
+            gate_out = torch.zeros(batch, self.num_hidden, dtype=torch.int32, device=self.device)
+            for bit in range(8): # Simulate 8 physical OR-wires
+                bit_mask = 1 << bit
+                bit_present = ((active_w & bit_mask) != 0).any(dim=-1)
+                gate_out += bit_present.int() << bit
+                
+            total_sum += gate_out
+        return total_sum
 
     def forward(self, x):
         batch = x.size(0)
         time_steps = x.size(1)
         
-        # --- PHASE 4: APPLY TOPOLOGY MASK ---
+        # --- STE Weight Quantization ---
         w_in_masked = self.w_in * self.mask_in
         w_rec_masked = self.w_rec * self.mask_rec
         w_out_masked = self.w_out * self.mask_out
 
-        # --- STE Weight Quantization ---
         w_in_ste = (torch.round(w_in_masked / self.delta_in) - w_in_masked / self.delta_in).detach() + w_in_masked / self.delta_in
         w_rec_ste = (torch.round(w_rec_masked / self.delta_rec) - w_rec_masked / self.delta_rec).detach() + w_rec_masked / self.delta_rec
         w_out_ste = (torch.round(w_out_masked / self.delta_out) - w_out_masked / self.delta_out).detach() + w_out_masked / self.delta_out
@@ -118,20 +153,37 @@ class Phase4QATSparseNet(nn.Module):
         w_rec_eff = w_rec_ste * self.delta_rec
         w_out_eff = w_out_ste * self.delta_out
 
+        # Hardware Integer Arrays (Pre-Calculated for OR buses)
+        w_in_int = torch.round(w_in_ste).int()
+        w_rec_int = torch.round(w_rec_ste).int()
+        w_all_int = torch.cat([w_in_int, w_rec_int], dim=1)
+        w_all_abs_int = torch.abs(w_all_int)
+
         mem_hid = torch.zeros(batch, self.num_hidden, device=self.device)
         mem_out = torch.zeros(batch, self.num_outputs, device=self.device)
         spk_hid = torch.zeros(batch, self.num_hidden, device=self.device)
-        
         spk_out_rec, spk_hid_rec = [], []
 
         for step in range(time_steps):
             
-            cur_in = torch.matmul(x[:, step, :], w_in_eff.t())
-            cur_rec = torch.matmul(spk_hid, w_rec_eff.t())
+            # --- 1. HIDDEN LAYER: OR-GATE SIMULATION ---
+            # Ideal Math (for gradients)
+            ideal_sum = torch.matmul(x[:, step, :], w_in_eff.t()) + torch.matmul(spk_hid, w_rec_eff.t())
             
-            # --- 1. HIDDEN INTEGRATION ---
-            ideal_mem_hid = (mem_hid * self.beta_hid.unsqueeze(0)) + cur_in + cur_rec
+            # Physical Hardware Math
+            all_spikes = torch.cat([x[:, step, :], spk_hid], dim=1)
+            pos_int = self.simulate_or_buses(all_spikes, w_all_abs_int, self.pos_masks)
+            neg_int = self.simulate_or_buses(all_spikes, w_all_abs_int, self.neg_masks)
             
+            hw_sum_int = pos_int - neg_int
+            hw_sum_float = hw_sum_int.float() * self.delta_hid
+            
+            # Straight-Through Estimator: Use Physical Sum, Backprop Ideal Sum
+            hw_sum_ste = (hw_sum_float - ideal_sum).detach() + ideal_sum
+            
+            ideal_mem_hid = (mem_hid * self.beta_hid.unsqueeze(0)) + hw_sum_ste
+            
+            # Pareto Clamps & Sub-integer truncation
             limit_hid = (self.max_mem_hid * self.lsb_hid).unsqueeze(0)
             ideal_mem_hid = torch.clamp(ideal_mem_hid, min=-limit_hid, max=limit_hid)
             
@@ -142,7 +194,7 @@ class Phase4QATSparseNet(nn.Module):
             mem_hid = mem_hid * (1.0 - spk_hid.detach()) 
             spk_hid_rec.append(spk_hid)
             
-            # --- 2. OUTPUT INTEGRATION ---
+            # --- 2. OUTPUT LAYER (Standard Matrix Additions) ---
             cur_out = torch.matmul(spk_hid, w_out_eff.t())
             ideal_mem_out = (mem_out * self.beta_out.unsqueeze(0)) + cur_out
             
@@ -194,17 +246,13 @@ def main():
     ledger = load_ledger(TARGET_FOLDER)
     config = ledger["base_config"]
     
-    print(f"\n=== Training Pipeline (Phase 4: Topology Pruning & Sparsity) ===")
+    print(f"\n=== Training Pipeline (Phase 6: Final Hardware OR-Bus Simulation) ===")
     
     train_loader, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
     idx_noise = labels_map.get("noise", 6)
     idx_silence = labels_map.get("silence", 7)
     inv_labels = {v: k for k, v in labels_map.items()}
     num_classes = config["num_outputs"]
-    
-    # Ensure dedicated save folder exists
-    sparsity_dir = os.path.join(TARGET_FOLDER, "sparsity_training")
-    os.makedirs(sparsity_dir, exist_ok=True)
     
     orig_model = FastSpikingNet(
         num_inputs=config["num_inputs"], num_hidden=config["num_hidden"],
@@ -214,37 +262,26 @@ def main():
     base_ckpt = torch.load(os.path.join(TARGET_FOLDER, "model_best.pth"), map_location=device)
     orig_model.load_state_dict(base_ckpt.get("model_state_dict", base_ckpt), strict=False)
 
-    model = Phase4QATSparseNet(orig_model, config, device).to(device)
+    model = Phase6QATFinalNet(orig_model, config, device).to(device)
     
-    target_checkpoint_path = os.path.join(TARGET_FOLDER, MODEL_NAME)
-    if os.path.exists(target_checkpoint_path):
-        print(f">>> Loading Phase 3 checkpoint weights from {MODEL_NAME}...")
-        p3_ckpt = torch.load(target_checkpoint_path, map_location=device)
-        p3_state = p3_ckpt.get("model_state_dict", p3_ckpt)
-        
-        if "w_in" in p3_state:
-            model.w_in.data.copy_(p3_state["w_in"])
-            model.w_rec.data.copy_(p3_state["w_rec"])
-            model.w_out.data.copy_(p3_state["w_out"])
-            
-            # If resuming a partially sparse model, copy the masks too
-            if "mask_in" in p3_state:
-                model.mask_in.data.copy_(p3_state["mask_in"])
-                model.mask_rec.data.copy_(p3_state["mask_rec"])
-                model.mask_out.data.copy_(p3_state["mask_out"])
-                print(">>> Resumed existing topology masks.")
-        else:
-            print(">>> Warning: 'w_in' not found in checkpoint state dict.")
+    # Load Phase 4 Checkpoint for Weights and Masks
+    target_ckpt_path = os.path.join(TARGET_FOLDER, SPARSE_CHECKPOINT)
+    if os.path.exists(target_ckpt_path):
+        p4_ckpt = torch.load(target_ckpt_path, map_location=device)
+        model.w_in.data.copy_(p4_ckpt["model_state_dict"]["w_in"])
+        model.w_rec.data.copy_(p4_ckpt["model_state_dict"]["w_rec"])
+        model.w_out.data.copy_(p4_ckpt["model_state_dict"]["w_out"])
+        model.mask_in.data.copy_(p4_ckpt["mask_in"])
+        model.mask_rec.data.copy_(p4_ckpt["mask_rec"])
+        model.mask_out.data.copy_(p4_ckpt["mask_out"])
+        print(f">>> Resumed {SPARSE_CHECKPOINT} weights and sparsity masks.")
     
-    # 3e-4 keeps the network plastic enough to route around holes
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-8)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-12)
+    # Small learning rate to heal any minor collision losses without destroying the weights
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-7)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-7)
     
-    # Starting Sparsity Tracking
-    total_params = model.w_in.numel() + model.w_rec.numel() + model.w_out.numel()
+    best_test_acc = 0.0
 
-    sparsity_pct = 0.0
-    
     for epoch in range(EPOCHS_TO_RUN):
         model.train()
         total_loss, correct, total = 0.0, 0, 0
@@ -304,44 +341,12 @@ def main():
         train_acc = (correct / total) * 100 if total > 0 else 0.0
         epoch_loss = total_loss / batches if batches > 0 else 0.0
         
-        # Evaluate BEFORE pruning
         test_acc = run_evaluation(model, test_loader, device, idx_noise, idx_silence)[0]
 
-        
-
-        if epoch % 10 == 0:
-            # --- PHASE 4: ITERATIVE MAGNITUDE PRUNING ---
-            with torch.no_grad():
-                def apply_sparsity_mask(weight, mask, target_drop_rate=0.005):
-                    active_w = torch.abs(weight * mask)
-                    alive_elements = active_w[active_w > 0]
-                    if len(alive_elements) > 0:
-                            k = max(1, int(len(alive_elements) * target_drop_rate))
-                            threshold = torch.kthvalue(alive_elements.view(-1), k).values
-                            new_mask = (active_w > threshold).float()
-                            mask.data.copy_(new_mask)
-            
-                apply_sparsity_mask(model.w_in, model.mask_in)
-                apply_sparsity_mask(model.w_rec, model.mask_rec)
-                apply_sparsity_mask(model.w_out, model.mask_out)
-                        
-                surviving = model.mask_in.sum() + model.mask_rec.sum() + model.mask_out.sum()
-                sparsity_pct = (1.0 - surviving / total_params) * 100
-                print(f"   ✂️ Topology Pruned | Network Sparsity: {sparsity_pct:.1f}% | Active Wires: {int(surviving.item())}/{total_params}")
-
-        # --- DEDICATED SAVER (EVERY EPOCH) ---
-        save_name = f"acc{train_acc:.1f}_sparsity{sparsity_pct:.1f}.pth"
-        save_path = os.path.join(sparsity_dir, save_name)
-        
-        torch.save({
-            "model_state_dict": model.state_dict(),
-            "test_acc": test_acc,
-            "sparsity_pct": sparsity_pct,
-            "mask_in": model.mask_in,
-            "mask_rec": model.mask_rec,
-            "mask_out": model.mask_out
-        }, save_path)
-        print(f"   💾 Saved topology checkpoint: {save_name}")
+        if test_acc >= best_test_acc:
+            best_test_acc = test_acc
+            torch.save(model.state_dict(), os.path.join(TARGET_FOLDER, "phase6_final_hardware_model.pth"))
+            print(f"   🌟 Saved phase6_final_hardware_model.pth")
 
         scheduler.step(epoch_loss) 
         current_lr = optimizer.param_groups[0]['lr']
@@ -352,13 +357,12 @@ def main():
     # ======================================================================
     # FINAL DIAGNOSTICS BLOCK
     # ======================================================================
-    print("\nRunning Final Diagnostics...")
+    print("\nRunning Final Hardware Diagnostics...")
     final_test_acc, preds, targets, spike_counts, input_counts, hidden_counts = run_evaluation(model, test_loader, device, idx_noise, idx_silence)
     
     target_tensor_arr = torch.tensor(targets)
     pred_tensor_arr = torch.tensor(preds)
     
-    # --- 1. Average Input Spikes per Target Class ---
     print("\n--- Average Input Spikes per Target Class ---")
     num_inputs = config["num_inputs"]
     header_in = f"{'Target Class':<13} | " + " | ".join([f"Ch{i:<4}" for i in range(num_inputs)]) + " || TOTAL"
@@ -372,7 +376,6 @@ def main():
             row = f"{inv_labels[i]:<13} | " + " | ".join([f"{val:>6.1f}" for val in mean_in]) + f" || {total_in:>6.1f}"
             print(row)
 
-    # --- 2. Average Hidden Spikes per Target Class ---
     print("\n--- Average Hidden Spikes per Target Class ---")
     header_hid = f"{'Target Class':<13} | {'Total Layer':>11} | {'Avg/Neuron':>10} | {'Max Neuron':>10}"
     print(header_hid)
@@ -386,7 +389,6 @@ def main():
             max_n = mean_hid.max().item()
             print(f"{inv_labels[i]:<13} | {total_hid:>11.1f} | {avg_per_n:>10.1f} | {max_n:>10.1f}")
 
-    # --- 3. Average Output Spikes per Target Class ---
     print("\n--- Average Output Spikes per Target Class ---")
     header_spikes = f"{'Target Class':<13} | " + " | ".join([f"{inv_labels[i]:>6}" for i in range(num_classes)])
     print(header_spikes)
@@ -397,40 +399,25 @@ def main():
             mean_spikes = spike_counts[class_mask].float().mean(dim=0)
             print(f"{inv_labels[i]:<13} | " + " | ".join([f"{val:>6.1f}" for val in mean_spikes]))
 
-    # --- 4. Network Health & Sparsity Audit (Phase 3 Adjusted) ---
     print("\n--- Network Health & Sparsity Audit ---")
-    
     total_spikes_per_neuron = hidden_counts.sum(dim=0)
     avg_spikes_per_neuron = hidden_counts.mean(dim=0)
-    
     dead_neurons = (total_spikes_per_neuron == 0).nonzero(as_tuple=True)[0].tolist()
     hyper_neurons = (avg_spikes_per_neuron > 40).nonzero(as_tuple=True)[0].tolist()
     
-    # Structural Checks (Using Phase 3 Custom Parameters)
     max_in_w = model.w_in.data.abs().max(dim=1)[0]
     severed_in = (max_in_w < 1e-4).nonzero(as_tuple=True)[0].tolist()
-    
     max_out_w = model.w_out.data.abs().max(dim=0)[0]
     weak_out = (max_out_w < 1.0).nonzero(as_tuple=True)[0].tolist()
-    
     max_rec_w = model.w_rec.data.abs().max(dim=1)[0]
     severed_rec = (max_rec_w < 1e-4).nonzero(as_tuple=True)[0].tolist()
     
-    fast_leakers = (model.beta_hid <= 0.5).nonzero(as_tuple=True)[0].tolist()
-    useless_set = set(dead_neurons) & set(weak_out)
-    
     print(f"Total Hidden Neurons: {config['num_hidden']}")
-    print(f"Dead Neurons (0 spikes on test set) : {len(dead_neurons):>3}  {dead_neurons if dead_neurons else ''}")
-    print(f"Hyperactive (>40 spikes per sample): {len(hyper_neurons):>3}  {hyper_neurons if hyper_neurons else ''}")
-    print(f"Severed Inputs (Max In W < 0.0001)  : {len(severed_in):>3}  {severed_in if severed_in else ''}")
-    print(f"Severed Recurrents (Max Rec W < 0)  : {len(severed_rec):>3}  {severed_rec if severed_rec else ''}")
-    print(f"Weak Output Drivers (Max W < 1.0)   : {len(weak_out):>3}")
-    print(f"Fast Leakers (Beta <= 0.5)          : {len(fast_leakers):>3}")
-    print(f"--> Prime Pruning Candidates        : {len(useless_set):>3}  {list(useless_set) if useless_set else ''}")
+    print(f"Dead Neurons (0 spikes)         : {len(dead_neurons):>3}  {dead_neurons if dead_neurons else ''}")
+    print(f"Severed Inputs (Max In W < 0.0001): {len(severed_in):>3}  {severed_in if severed_in else ''}")
+    print(f"Severed Recurrents (Max Rec W < 0): {len(severed_rec):>3}  {severed_rec if severed_rec else ''}")
 
-    # --- 5. Hardware Precision Matrix (%) ---
     print("\n--- Hardware Precision Matrix (%) ---")
-    print("(Calculated only on active keyword triggers. Noise/Silence = Dropped)")
     keyword_idx = [i for i in range(num_classes) if i not in (idx_noise, idx_silence)]
     header = f"{'Target / Pred':<13} | " + " | ".join([f"{inv_labels[i]:>6}" for i in keyword_idx]) + " || Retention"
     print(header)
@@ -453,17 +440,14 @@ def main():
             row_str += f"|| {ret_pct:>6.1f}%"
             print(row_str)
 
-    # --- 6. ACTIONABLE KEYWORD MARGIN REPORT ---
     sorted_spikes, _ = torch.sort(spike_counts, dim=1, descending=True)
     margin_diffs = sorted_spikes[:, 0] - sorted_spikes[:, 1]
-    
     is_keyword_target = (target_tensor_arr != idx_noise) & (target_tensor_arr != idx_silence)
     total_real_keywords = is_keyword_target.sum().item()
 
     print(f"\n--- Spike Margin Threshold Report (Base: {total_real_keywords} Real Keywords) ---")
     for margin in [0, 1, 2, 3, 4, 5, 10, 15]:
         margin_met = margin_diffs >= margin
-        
         is_keyword_pred = (pred_tensor_arr != idx_noise) & (pred_tensor_arr != idx_silence)
         attempt_mask = margin_met & is_keyword_pred
         total_attempts = attempt_mask.sum().item()

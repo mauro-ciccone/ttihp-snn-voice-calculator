@@ -10,7 +10,11 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-SPARSE_CHECKPOINT = "acc86.3_sparsity22.5.pth" # Ensure this is your Phase 4 file!
+SPARSE_CHECKPOINT = "acc86.3_sparsity22.5.pth" # Update to your exact phase 4 filename
+
+# --- OR-GATE HARDWARE BUDGET ---
+G_IN = 2   # Number of OR-gates per polarity for the Cochlea Input Bus
+G_REC = 4  # Number of OR-gates per polarity for the Recurrent Hidden Bus
 
 # --- HARDWARE CONSTANTS ---
 VALID_BETAS = torch.tensor([
@@ -40,19 +44,26 @@ def get_snapped_hardware(beta_tensor, device):
     return VALID_BETAS.to(device)[best_indices], FRAC_BITS.to(device)[best_indices]
 
 def bit_count(n): return bin(n).count('1')
+
 def assign_to_or_gates(weights_with_indices, num_gates):
     if not weights_with_indices: return [], []
     gates = [0] * num_gates
     assignments = [[] for _ in range(num_gates)]
+    
+    # Sort descending so we place the largest magnitude integers first
     weights_with_indices.sort(key=lambda x: x[0], reverse=True)
+    
     for w_val, src_type, src_idx in weights_with_indices:
         best_gate = -1
-        min_overlap = float('inf')
+        best_score = float('inf')
         for i in range(num_gates):
             overlap = bit_count(gates[i] & w_val)
-            if overlap < min_overlap:
-                min_overlap = overlap
+            # Tie-Breaker: If overlap is equal, pick the gate with the fewest synapses
+            score = (overlap * 100) + len(assignments[i])
+            if score < best_score:
+                best_score = score
                 best_gate = i
+                
         gates[best_gate] |= w_val
         assignments[best_gate].append((src_type, src_idx))
     return gates, assignments
@@ -64,8 +75,10 @@ class UltimateDiagnosticNet(nn.Module):
         self.num_hidden = config["num_hidden"]
         self.num_inputs = config["num_inputs"]
         self.num_outputs = config["num_outputs"]
+        
+        self.g_in = G_IN
+        self.g_rec = G_REC
 
-        # 1. LOAD BASE MODEL (To fix the Delta extraction bug)
         base_ckpt = torch.load(os.path.join(TARGET_FOLDER, "model_best.pth"), map_location=device)
         orig_model = FastSpikingNet(
             num_inputs=config["num_inputs"], num_hidden=config["num_hidden"],
@@ -73,24 +86,20 @@ class UltimateDiagnosticNet(nn.Module):
         ).to(device)
         orig_model.load_state_dict(base_ckpt.get("model_state_dict", base_ckpt), strict=False)
 
-        # 2. EXTRACT EXACT PHASE 4 DELTAS (From dense base model)
         with torch.no_grad():
             raw_delta_in = (torch.quantile(torch.abs(orig_model.fc_in.weight.data), 0.985) + 1e-8) / 127.0
             raw_delta_rec = (torch.quantile(torch.abs(orig_model.fc_rec.weight.data), 0.985) + 1e-8) / 127.0
             self.global_delta = max(raw_delta_in, raw_delta_rec)
             self.delta_out = (torch.quantile(torch.abs(orig_model.fc_out.weight.data), 0.985) + 1e-8) / 127.0
 
-        # 3. LOAD SPARSE WEIGHTS
         self.w_in_float = ckpt["model_state_dict"]["w_in"].to(device) * ckpt["mask_in"].to(device)
         self.w_rec_float = ckpt["model_state_dict"]["w_rec"].to(device) * ckpt["mask_rec"].to(device)
         self.w_out_float = ckpt["model_state_dict"]["w_out"].to(device) * ckpt["mask_out"].to(device)
 
-        # 4. QUANTIZE TO INTEGERS
         self.w_in_int = torch.clamp(torch.round(self.w_in_float / self.global_delta).int(), -128, 127)
         self.w_rec_int = torch.clamp(torch.round(self.w_rec_float / self.global_delta).int(), -128, 127)
         self.w_out_int = torch.clamp(torch.round(self.w_out_float / self.delta_out).int(), -128, 127)
 
-        # Hardware Constants
         self.beta_hid, self.frac_bits_hid = get_snapped_hardware(orig_model.lif_hidden.beta.data, device)
         self.beta_out, self.frac_bits_out = get_snapped_hardware(orig_model.lif_out.beta.data, device)
         self.max_mem_hid = (2.0 ** (pareto_cfg["int_bits_hid"].to(device) + self.frac_bits_hid)) - 1.0
@@ -104,34 +113,32 @@ class UltimateDiagnosticNet(nn.Module):
 
     def _build_or_gates(self):
         rec_active = [(self.w_rec_int[i] != 0).sum().item() for i in range(self.num_hidden)]
-        p90_rec = torch.quantile(torch.tensor(rec_active, dtype=torch.float32), 0.90).item()
-        p50_rec = torch.quantile(torch.tensor(rec_active, dtype=torch.float32), 0.50).item()
-
-        self.pos_masks_in = torch.zeros(1, self.num_hidden, self.num_inputs, dtype=torch.int32)
-        self.neg_masks_in = torch.zeros(1, self.num_hidden, self.num_inputs, dtype=torch.int32)
-        self.pos_masks_rec = torch.zeros(3, self.num_hidden, self.num_hidden, dtype=torch.int32)
-        self.neg_masks_rec = torch.zeros(3, self.num_hidden, self.num_hidden, dtype=torch.int32)
+        # Removed dynamic gate count; we are forcing it to use the hardware budget globally
+        
+        self.pos_masks_in = torch.zeros(self.g_in, self.num_hidden, self.num_inputs, dtype=torch.int32)
+        self.neg_masks_in = torch.zeros(self.g_in, self.num_hidden, self.num_inputs, dtype=torch.int32)
+        self.pos_masks_rec = torch.zeros(self.g_rec, self.num_hidden, self.num_hidden, dtype=torch.int32)
+        self.neg_masks_rec = torch.zeros(self.g_rec, self.num_hidden, self.num_hidden, dtype=torch.int32)
 
         for i in range(self.num_hidden):
+            # 1. Route Inputs
             in_p = [(w, 'in', idx) for idx, w in enumerate(self.w_in_int[i].tolist()) if w > 0]
             in_n = [(abs(w), 'in', idx) for idx, w in enumerate(self.w_in_int[i].tolist()) if w < 0]
-            _, p_assign_in = assign_to_or_gates(in_p, 1 if in_p else 0)
-            _, n_assign_in = assign_to_or_gates(in_n, 1 if in_n else 0)
-            if p_assign_in:
-                for _, idx in p_assign_in[0]: self.pos_masks_in[0, i, idx] = 1
-            if n_assign_in:
-                for _, idx in n_assign_in[0]: self.neg_masks_in[0, i, idx] = 1
+            
+            _, p_assign_in = assign_to_or_gates(in_p, min(self.g_in, len(in_p)))
+            _, n_assign_in = assign_to_or_gates(in_n, min(self.g_in, len(in_n)))
+            
+            for g, g_list in enumerate(p_assign_in):
+                for _, idx in g_list: self.pos_masks_in[g, i, idx] = 1
+            for g, g_list in enumerate(n_assign_in):
+                for _, idx in g_list: self.neg_masks_in[g, i, idx] = 1
 
+            # 2. Route Recurrent
             rec_p = [(w, 'rec', idx) for idx, w in enumerate(self.w_rec_int[i].tolist()) if w > 0]
             rec_n = [(abs(w), 'rec', idx) for idx, w in enumerate(self.w_rec_int[i].tolist()) if w < 0]
-            
-            def get_g_rec(lst):
-                if len(lst) >= p90_rec / 2: return 3
-                if len(lst) >= p50_rec / 2: return 2
-                return 1 if len(lst) > 0 else 0
                 
-            _, p_assign_rec = assign_to_or_gates(rec_p, get_g_rec(rec_p))
-            _, n_assign_rec = assign_to_or_gates(rec_n, get_g_rec(rec_n))
+            _, p_assign_rec = assign_to_or_gates(rec_p, min(self.g_rec, len(rec_p)))
+            _, n_assign_rec = assign_to_or_gates(rec_n, min(self.g_rec, len(rec_n)))
             
             for g, g_list in enumerate(p_assign_rec):
                 for _, idx in g_list: self.pos_masks_rec[g, i, idx] = 1
@@ -150,10 +157,10 @@ class UltimateDiagnosticNet(nn.Module):
                 mats.append(torch.stack(bits, dim=0))
             return torch.stack(mats, dim=0).view(num_gates * 8, in_dim, self.num_hidden)
 
-        self.pos_mat_in = make_mats(self.pos_masks_in, w_in_abs, 1, self.num_inputs)
-        self.neg_mat_in = make_mats(self.neg_masks_in, w_in_abs, 1, self.num_inputs)
-        self.pos_mat_rec = make_mats(self.pos_masks_rec, w_rec_abs, 3, self.num_hidden)
-        self.neg_mat_rec = make_mats(self.neg_masks_rec, w_rec_abs, 3, self.num_hidden)
+        self.pos_mat_in = make_mats(self.pos_masks_in, w_in_abs, self.g_in, self.num_inputs)
+        self.neg_mat_in = make_mats(self.neg_masks_in, w_in_abs, self.g_in, self.num_inputs)
+        self.pos_mat_rec = make_mats(self.pos_masks_rec, w_rec_abs, self.g_rec, self.num_hidden)
+        self.neg_mat_rec = make_mats(self.neg_masks_rec, w_rec_abs, self.g_rec, self.num_hidden)
         self.bit_shifts = torch.tensor([1<<i for i in range(8)], dtype=torch.int32, device=self.device).view(1, 8, 1, 1)
 
     def forward(self, x, engine):
@@ -167,30 +174,26 @@ class UltimateDiagnosticNet(nn.Module):
 
         for step in range(time_steps):
             if engine == 1:
-                # ENGINE 1: EXACT PHASE 4 REPLICA (Float STE)
                 w_in_ste = (torch.round(self.w_in_float / self.global_delta) - self.w_in_float / self.global_delta).detach() + self.w_in_float / self.global_delta
                 w_rec_ste = (torch.round(self.w_rec_float / self.global_delta) - self.w_rec_float / self.global_delta).detach() + self.w_rec_float / self.global_delta
-                
                 cur_in = torch.matmul(x[:, step, :], (w_in_ste * self.global_delta).t())
                 cur_rec = torch.matmul(spk_hid, (w_rec_ste * self.global_delta).t())
                 hw_sum_float = cur_in + cur_rec
 
             elif engine == 2:
-                # ENGINE 2: EXACT INTEGER MATMUL
                 hw_sum_in = torch.matmul(x[:, step, :], self.w_in_int.float().t())
                 hw_sum_rec = torch.matmul(spk_hid, self.w_rec_int.float().t())
                 hw_sum_float = (hw_sum_in + hw_sum_rec) * self.global_delta
 
             elif engine == 3:
-                # ENGINE 3: PHYSICAL OR-GATES
                 x_batched = x[:, step, :].unsqueeze(0)
                 spk_batched = spk_hid.unsqueeze(0)
                 
-                hw_in_pos = ((torch.matmul(x_batched, self.pos_mat_in) > 0).int().view(1, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0,1))
-                hw_in_neg = ((torch.matmul(x_batched, self.neg_mat_in) > 0).int().view(1, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0,1))
+                hw_in_pos = ((torch.matmul(x_batched, self.pos_mat_in) > 0).int().view(self.g_in, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0,1))
+                hw_in_neg = ((torch.matmul(x_batched, self.neg_mat_in) > 0).int().view(self.g_in, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0,1))
                 
-                hw_rec_pos = ((torch.matmul(spk_batched, self.pos_mat_rec) > 0).int().view(3, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0,1))
-                hw_rec_neg = ((torch.matmul(spk_batched, self.neg_mat_rec) > 0).int().view(3, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0,1))
+                hw_rec_pos = ((torch.matmul(spk_batched, self.pos_mat_rec) > 0).int().view(self.g_rec, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0,1))
+                hw_rec_neg = ((torch.matmul(spk_batched, self.neg_mat_rec) > 0).int().view(self.g_rec, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0,1))
                 
                 hw_sum_int = (hw_in_pos - hw_in_neg) + (hw_rec_pos - hw_rec_neg)
                 hw_sum_float = hw_sum_int.float() * self.global_delta
@@ -204,7 +207,6 @@ class UltimateDiagnosticNet(nn.Module):
             mem_hid = mem_hid * (1.0 - spk_hid) 
             spk_hid_rec.append(spk_hid)
             
-            # Output Layer (Identical across all engines)
             cur_out = torch.matmul(spk_hid, self.w_out_int.float().t()) * self.delta_out
             ideal_mem_out = (mem_out * self.beta_out.unsqueeze(0)) + cur_out
             limit_out = (self.max_mem_out * self.lsb_out).unsqueeze(0)
@@ -244,7 +246,7 @@ def main():
     ledger = load_ledger(TARGET_FOLDER)
     config = ledger["base_config"]
     
-    print("\n=== Phase 5: ULTIMATE DIAGNOSTIC (Triple Engine) ===")
+    print(f"\n=== Phase 5: OR-GATE ROUTING (G_IN={G_IN}, G_REC={G_REC}) ===")
     
     train_loader, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
     idx_silence = labels_map.get("silence", 7)
@@ -267,15 +269,11 @@ def main():
     print(f"Accuracy: {acc3:.2f}% | Avg Hidden Spikes: {spk3:.1f}")
     
     print("\n--- DIAGNOSTIC CONCLUSION ---")
-    if abs(acc1 - acc2) > 1.0:
-        print("🚨 CRITICAL BUG STILL PRESENT: Engine 1 and Engine 2 mismatch!")
-    elif acc2 > 80.0 and acc3 < 50.0:
-        print("✅ EXTRACTION FIXED! Engine 1 and 2 perfectly match Phase 4.")
-        print("🚨 PHYSICAL BOTTLENECK CONFIRMED: The Dual-Bus OR-gates are physically dropping too many bits. We must run Phase 6 GA to heal it or allocate more gates.")
+    if acc3 >= 80.0:
+        print("✅ SUCCESS! The enhanced OR-gate routing successfully preserved the architecture.")
     else:
-        print("✅ SUCCESS! The OR-gates are stable and hold accuracy.")
+        print("⚠️ Significant overlap remains. The Phase 6 GA will need to heal these specific bit collisions.")
         
-    # Automatically export the correct manifest
     manifest = {
         "delta_in": model.global_delta, 
         "delta_rec": model.global_delta,
@@ -288,11 +286,13 @@ def main():
         "pos_masks_rec": model.pos_masks_rec,
         "neg_masks_rec": model.neg_masks_rec,
         "int_bits_hid": pareto_cfg["int_bits_hid"],
-        "int_bits_out": pareto_cfg["int_bits_out"]
+        "int_bits_out": pareto_cfg["int_bits_out"],
+        "g_in": G_IN,    # Exported so Phase 6 knows the architecture shape
+        "g_rec": G_REC   # Exported so Phase 6 knows the architecture shape
     }
     save_path = os.path.join(TARGET_FOLDER, "pure_integer_model.pt")
     torch.save(manifest, save_path)
-    print(f"\n💾 Corrected Pure Integer Blueprint saved to: {save_path}")
+    print(f"\n💾 Enhanced Pure Integer Blueprint saved to: {save_path}")
 
 if __name__ == "__main__":
     main()

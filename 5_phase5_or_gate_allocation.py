@@ -1,8 +1,5 @@
 import os
 import torch
-import torch.nn as nn
-from tqdm import tqdm
-from dataset_cached import get_cached_dataloaders
 from utils_ledger import load_ledger
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
@@ -34,33 +31,43 @@ def main():
     ledger = load_ledger(TARGET_FOLDER)
     config = ledger["base_config"]
     
-    print("\n=== Phase 5: DATA-DRIVEN OR-GATE DIAGNOSTIC ===")
+    print("\n=== Phase 5: Flawless Integer Extraction & Routing ===")
     
     ckpt_path = os.path.join(TARGET_FOLDER, SPARSE_CHECKPOINT)
     ckpt = torch.load(ckpt_path, map_location=device)
     w_in = ckpt["model_state_dict"]["w_in"] * ckpt["mask_in"]
     w_rec = ckpt["model_state_dict"]["w_rec"] * ckpt["mask_rec"]
+    w_out = ckpt["model_state_dict"]["w_out"] * ckpt["mask_out"]
 
-    # 1. Extract Unified Integers
+    pareto_cfg = torch.load(os.path.join(TARGET_FOLDER, "pareto_config_84.0.pt"), map_location=device)
+
     with torch.no_grad():
+        # Extract the exact same way Phase 4 did!
         raw_delta_in = (torch.quantile(torch.abs(ckpt["model_state_dict"]["w_in"]), 0.985) + 1e-8) / 127.0
         raw_delta_rec = (torch.quantile(torch.abs(ckpt["model_state_dict"]["w_rec"]), 0.985) + 1e-8) / 127.0
-        global_delta = max(raw_delta_in, raw_delta_rec)
         
-        w_in_int = torch.clamp(torch.round((w_in / global_delta) * global_delta / global_delta).int(), -128, 127)
-        w_rec_int = torch.clamp(torch.round((w_rec / global_delta) * global_delta / global_delta).int(), -128, 127)
+        global_delta = max(raw_delta_in, raw_delta_rec)
+        delta_out = (torch.quantile(torch.abs(ckpt["model_state_dict"]["w_out"]), 0.985) + 1e-8) / 127.0
+        
+        # Single direct quantization (No double-rounding)
+        w_in_int = torch.clamp(torch.round(w_in / global_delta).int(), -128, 127)
+        w_rec_int = torch.clamp(torch.round(w_rec / global_delta).int(), -128, 127)
+        w_out_int = torch.clamp(torch.round(w_out / delta_out).int(), -128, 127)
 
     num_hidden = config["num_hidden"]
     num_inputs = config["num_inputs"]
     
-    # 2. Gate Allocation
+    rec_active = [(w_rec_int[i] != 0).sum().item() for i in range(num_hidden)]
+    p90_rec = torch.quantile(torch.tensor(rec_active, dtype=torch.float32), 0.90).item()
+    p50_rec = torch.quantile(torch.tensor(rec_active, dtype=torch.float32), 0.50).item()
+    
     pos_masks_in = torch.zeros(1, num_hidden, num_inputs, dtype=torch.int32)
     neg_masks_in = torch.zeros(1, num_hidden, num_inputs, dtype=torch.int32)
     pos_masks_rec = torch.zeros(3, num_hidden, num_hidden, dtype=torch.int32)
     neg_masks_rec = torch.zeros(3, num_hidden, num_hidden, dtype=torch.int32)
-
+    
     for i in range(num_hidden):
-        # Input Gates (Fixed 1)
+        # Input Gates
         in_p = [(w, 'in', idx) for idx, w in enumerate(w_in_int[i].tolist()) if w > 0]
         in_n = [(abs(w), 'in', idx) for idx, w in enumerate(w_in_int[i].tolist()) if w < 0]
         
@@ -72,114 +79,42 @@ def main():
         if n_assign_in:
             for _, idx in n_assign_in[0]: neg_masks_in[0, i, idx] = 1
             
-        # Recurrent Gates (Fixed 3 for maximum bandwidth)
+        # Recurrent Gates
         rec_p = [(w, 'rec', idx) for idx, w in enumerate(w_rec_int[i].tolist()) if w > 0]
         rec_n = [(abs(w), 'rec', idx) for idx, w in enumerate(w_rec_int[i].tolist()) if w < 0]
         
-        _, p_assign_rec = assign_to_or_gates(rec_p, 3 if rec_p else 0)
-        _, n_assign_rec = assign_to_or_gates(rec_n, 3 if rec_n else 0)
+        def get_g_rec(lst):
+            if len(lst) >= p90_rec / 2: return 3
+            if len(lst) >= p50_rec / 2: return 2
+            return 1 if len(lst) > 0 else 0
+            
+        _, p_assign_rec = assign_to_or_gates(rec_p, get_g_rec(rec_p))
+        _, n_assign_rec = assign_to_or_gates(rec_n, get_g_rec(rec_n))
         
         for g, g_list in enumerate(p_assign_rec):
             for _, idx in g_list: pos_masks_rec[g, i, idx] = 1
         for g, g_list in enumerate(n_assign_rec):
             for _, idx in g_list: neg_masks_rec[g, i, idx] = 1
 
-    # 3. REAL DATA TWIN-ENGINE SIMULATION
-    print("\n>>> Simulating Real Audio Batch through OR-Gates...")
-    train_loader, _, _ = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
-    x_batch, y_batch = next(iter(train_loader))
-    batch_size, time_steps, _ = x_batch.shape
+    manifest = {
+        "delta_in": global_delta, # Passed to Phase 6 as global
+        "delta_rec": global_delta, # Passed to Phase 6 as global
+        "delta_out": delta_out,
+        "w_in_int": w_in_int,
+        "w_rec_int": w_rec_int,
+        "w_out_int": w_out_int,
+        "pos_masks_in": pos_masks_in,
+        "neg_masks_in": neg_masks_in,
+        "pos_masks_rec": pos_masks_rec,
+        "neg_masks_rec": neg_masks_rec,
+        "int_bits_hid": pareto_cfg["int_bits_hid"],
+        "int_bits_out": pareto_cfg["int_bits_out"]
+    }
 
-    w_in_abs = torch.abs(w_in_int)
-    w_rec_abs = torch.abs(w_rec_int)
-
-    def _build_mats(gate_masks, w_abs, num_gates, in_dim):
-        mats = []
-        for g in range(num_gates):
-            w_gate = w_abs * gate_masks[g]
-            bits = [((w_gate & (1 << b)) != 0).float().t() for b in range(8)]
-            mats.append(torch.stack(bits, dim=0))
-        return torch.stack(mats, dim=0).view(num_gates * 8, in_dim, num_hidden)
-
-    pos_mat_in = _build_mats(pos_masks_in, w_in_abs, 1, num_inputs)
-    neg_mat_in = _build_mats(neg_masks_in, w_in_abs, 1, num_inputs)
-    pos_mat_rec = _build_mats(pos_masks_rec, w_rec_abs, 3, num_hidden)
-    neg_mat_rec = _build_mats(neg_masks_rec, w_rec_abs, 3, num_hidden)
+    save_path = os.path.join(TARGET_FOLDER, "pure_integer_model.pt")
+    torch.save(manifest, save_path)
     
-    bit_shifts = torch.tensor([1<<i for i in range(8)], dtype=torch.int32).view(1, 8, 1, num_hidden)
-
-    total_ideal_in_pos, total_ideal_in_neg = 0, 0
-    total_hw_in_pos, total_hw_in_neg = 0, 0
-    
-    total_ideal_rec_pos, total_ideal_rec_neg = 0, 0
-    total_hw_rec_pos, total_hw_rec_neg = 0, 0
-
-    spk_ideal = torch.zeros(batch_size, num_hidden)
-    
-    for step in tqdm(range(time_steps), desc="Timesteps"):
-        x_step = x_batch[:, step, :]
-        
-        # --- IDEAL MATH ---
-        w_in_pos_ideal = torch.relu(w_in_int.float())
-        w_in_neg_ideal = torch.relu(-w_in_int.float())
-        ideal_in_pos = torch.matmul(x_step, w_in_pos_ideal.t())
-        ideal_in_neg = torch.matmul(x_step, w_in_neg_ideal.t())
-        
-        w_rec_pos_ideal = torch.relu(w_rec_int.float())
-        w_rec_neg_ideal = torch.relu(-w_rec_int.float())
-        ideal_rec_pos = torch.matmul(spk_ideal, w_rec_pos_ideal.t())
-        ideal_rec_neg = torch.matmul(spk_ideal, w_rec_neg_ideal.t())
-        
-        # --- HARDWARE SIMULATION ---
-        x_batched = x_step.unsqueeze(0)
-        spk_batched = spk_ideal.unsqueeze(0)
-        
-        hw_in_pos = ((torch.matmul(x_batched, pos_mat_in) > 0).int().view(1, 8, batch_size, num_hidden) * bit_shifts).sum(dim=(0,1))
-        hw_in_neg = ((torch.matmul(x_batched, neg_mat_in) > 0).int().view(1, 8, batch_size, num_hidden) * bit_shifts).sum(dim=(0,1))
-        
-        hw_rec_pos = ((torch.matmul(spk_batched, pos_mat_rec) > 0).int().view(3, 8, batch_size, num_hidden) * bit_shifts).sum(dim=(0,1))
-        hw_rec_neg = ((torch.matmul(spk_batched, neg_mat_rec) > 0).int().view(3, 8, batch_size, num_hidden) * bit_shifts).sum(dim=(0,1))
-        
-        # Track Cumulative Sums
-        total_ideal_in_pos += ideal_in_pos.sum().item()
-        total_ideal_in_neg += ideal_in_neg.sum().item()
-        total_hw_in_pos += hw_in_pos.sum().item()
-        total_hw_in_neg += hw_in_neg.sum().item()
-        
-        total_ideal_rec_pos += ideal_rec_pos.sum().item()
-        total_ideal_rec_neg += ideal_rec_neg.sum().item()
-        total_hw_rec_pos += hw_rec_pos.sum().item()
-        total_hw_rec_neg += hw_rec_neg.sum().item()
-        
-        # Dummy trigger for next step
-        spk_ideal = ((ideal_in_pos - ideal_in_neg) + (ideal_rec_pos - ideal_rec_neg) > 10).float()
-
-    print("\n==================================================")
-    print("      REAL DATA BIT-COLLISION ANALYSIS            ")
-    print("==================================================")
-    
-    in_pos_loss = 100 * (1 - (total_hw_in_pos / (total_ideal_in_pos + 1e-5)))
-    in_neg_loss = 100 * (1 - (total_hw_in_neg / (total_ideal_in_neg + 1e-5)))
-    
-    rec_pos_loss = 100 * (1 - (total_hw_rec_pos / (total_ideal_rec_pos + 1e-5)))
-    rec_neg_loss = 100 * (1 - (total_hw_rec_neg / (total_ideal_rec_neg + 1e-5)))
-
-    print("\n--- COCHLEA INPUT BUS (1 Gate per polarity) ---")
-    print(f"Excitatory (+) Math vs HW : {int(total_ideal_in_pos)} vs {int(total_hw_in_pos)} (Lost {in_pos_loss:.1f}%)")
-    print(f"Inhibitory (-) Math vs HW : {int(total_ideal_in_neg)} vs {int(total_hw_in_neg)} (Lost {in_neg_loss:.1f}%)")
-    
-    print("\n--- RECURRENT BUS (3 Gates per polarity) ---")
-    print(f"Excitatory (+) Math vs HW : {int(total_ideal_rec_pos)} vs {int(total_hw_rec_pos)} (Lost {rec_pos_loss:.1f}%)")
-    print(f"Inhibitory (-) Math vs HW : {int(total_ideal_rec_neg)} vs {int(total_hw_rec_neg)} (Lost {rec_neg_loss:.1f}%)")
-    
-    print("\n==================================================")
-    if rec_neg_loss > rec_pos_loss * 1.5:
-        print("🚨 DIAGNOSIS CONFIRMED: FATAL LOSS OF INHIBITION")
-        print("The network is colliding heavily on the Recurrent Negative weights.")
-        print("This deletes the network's brakes, causing the hyperactivity (52% Acc).")
-        print("SOLUTION: We must scale up the number of negative recurrent OR-gates.")
-    else:
-        print("The loss is symmetrical. The problem may lie in integer thresholds.")
+    print(f"💾 Flawless Integer Blueprint saved to: {save_path}")
 
 if __name__ == "__main__":
     main()

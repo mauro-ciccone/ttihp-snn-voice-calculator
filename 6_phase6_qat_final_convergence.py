@@ -26,7 +26,6 @@ VALID_BETAS = torch.tensor([
     0.7500, 0.7656, 0.7812, 0.7969, 0.8125, 0.8281, 0.8438, 0.8594, 
     0.8750, 0.8906, 0.9062, 0.9219, 0.9375, 0.9531, 0.9688, 0.9844, 1.0000
 ])
-
 FRAC_BITS = torch.tensor([
     0.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 
     3.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 
@@ -39,20 +38,19 @@ FRAC_BITS = torch.tensor([
 ])
 
 def get_snapped_hardware(beta_tensor, device):
-    valid_betas = VALID_BETAS.to(device)
-    frac_bits = FRAC_BITS.to(device)
-    dists = (beta_tensor.unsqueeze(1) - valid_betas.unsqueeze(0)) ** 2
+    dists = (beta_tensor.unsqueeze(1) - VALID_BETAS.to(device).unsqueeze(0)) ** 2
     best_indices = dists.argmin(dim=1)
-    return valid_betas[best_indices], frac_bits[best_indices]
+    return VALID_BETAS.to(device)[best_indices], FRAC_BITS.to(device)[best_indices]
 
 # ======================================================================
-# Phase 6: PURE INTEGER HARDWARE CHIP
+# Phase 6: PURE INTEGER DUAL-BUS HARDWARE CHIP
 # ======================================================================
 class PureIntegerHardwareNet(nn.Module):
     def __init__(self, config, device):
         super().__init__()
         self.device = device
         self.num_hidden = config["num_hidden"]
+        self.num_inputs = config["num_inputs"]
         self.num_outputs = config["num_outputs"]
 
         # Load Original Betas to retrieve exact fractional bits
@@ -60,87 +58,116 @@ class PureIntegerHardwareNet(nn.Module):
             num_inputs=config["num_inputs"], num_hidden=config["num_hidden"],
             num_outputs=config["num_outputs"], beta=config["beta"]
         ).to(device)
-        base_ckpt = torch.load(os.path.join(TARGET_FOLDER, "model_best.pth"), map_location=device)
+        # Using Phase 3 to get raw betas
+        base_ckpt = torch.load(os.path.join(TARGET_FOLDER, "acc86.3_sparsity22.5.pth"), map_location=device)
         orig_model.load_state_dict(base_ckpt.get("model_state_dict", base_ckpt), strict=False)
 
         self.beta_hid, self.frac_bits_hid = get_snapped_hardware(orig_model.lif_hidden.beta.data, device)
         self.beta_out, self.frac_bits_out = get_snapped_hardware(orig_model.lif_out.beta.data, device)
 
-        # Load Pure Integer Manifest
+        # Load the fully synchronized Phase 5 Pure Integer Manifest
         manifest = torch.load(os.path.join(TARGET_FOLDER, "pure_integer_model.pt"), map_location=device)
         
-        self.global_delta = manifest["global_delta_hid"]
+        # Unified Delta!
+        self.global_delta = manifest["delta_in"] 
         self.delta_out = manifest["delta_out"]
         
-        # Wrapped as parameters so we can mutate them easily, but requires_grad=False
         self.w_in_int = nn.Parameter(manifest["w_in_int"], requires_grad=False)
         self.w_rec_int = nn.Parameter(manifest["w_rec_int"], requires_grad=False)
         self.w_out_int = nn.Parameter(manifest["w_out_int"], requires_grad=False)
         
-        self.pos_masks = nn.Parameter(manifest["pos_masks"], requires_grad=False)
-        self.neg_masks = nn.Parameter(manifest["neg_masks"], requires_grad=False)
+        # Dual-Bus Masks
+        self.pos_masks_in = nn.Parameter(manifest["pos_masks_in"], requires_grad=False)
+        self.neg_masks_in = nn.Parameter(manifest["neg_masks_in"], requires_grad=False)
+        self.pos_masks_rec = nn.Parameter(manifest["pos_masks_rec"], requires_grad=False)
+        self.neg_masks_rec = nn.Parameter(manifest["neg_masks_rec"], requires_grad=False)
 
-        # Hardware Caps
-        pareto_cfg = torch.load(os.path.join(TARGET_FOLDER, "pareto_config_84.0.pt"), map_location=device)
-        self.max_mem_hid = (2.0 ** (pareto_cfg["int_bits_hid"].to(device) + self.frac_bits_hid)) - 1.0
-        self.max_mem_out = (2.0 ** (pareto_cfg["int_bits_out"].to(device) + self.frac_bits_out)) - 1.0
+        # Hardware Caps from the Packed Pareto Config!
+        self.max_mem_hid = (2.0 ** (manifest["int_bits_hid"].to(device) + self.frac_bits_hid)) - 1.0
+        self.max_mem_out = (2.0 ** (manifest["int_bits_out"].to(device) + self.frac_bits_out)) - 1.0
 
-        # Physical LSBs
+        # Physical LSBs for the Flip-Flops
         self.lsb_hid = self.global_delta / (2.0 ** self.frac_bits_hid)
         self.lsb_out = self.delta_out / (2.0 ** self.frac_bits_out)
 
         self.thresh_hid = torch.round(1.0 / self.global_delta) * self.global_delta
         self.thresh_out = torch.round(1.0 / self.delta_out) * self.delta_out
 
+        # The (1, 8, 1, 1) broadcast shape for Bit shifting
+        self.bit_shifts = nn.Parameter(torch.tensor([1<<i for i in range(8)], dtype=torch.int32, device=device).view(1, 8, 1, 1), requires_grad=False)
+        
+        # Compile the initial bitwise matrices
+        self.rebuild_bit_mats()
+
+    def _build_bit_mats(self, gate_masks, w_abs_int, num_gates):
+        mats = []
+        for g in range(num_gates):
+            w_gate = w_abs_int * gate_masks[g]
+            bits = []
+            for b in range(8):
+                has_bit = ((w_gate & (1 << b)) != 0).float()
+                bits.append(has_bit.t())
+            mats.append(torch.stack(bits, dim=0))
+        return torch.stack(mats, dim=0) 
+
+    def rebuild_bit_mats(self):
+        """Must be called after any GA mutation to physically update the OR-gate layout!"""
+        w_in_abs = torch.abs(self.w_in_int.data)
+        w_rec_abs = torch.abs(self.w_rec_int.data)
+        
+        # Input Bus (1 Gate per polarity -> 8 bit matrices)
+        self.pos_bit_mats_in = self._build_bit_mats(self.pos_masks_in, w_in_abs, 1).view(8, self.num_inputs, self.num_hidden)
+        self.neg_bit_mats_in = self._build_bit_mats(self.neg_masks_in, w_in_abs, 1).view(8, self.num_inputs, self.num_hidden)
+        
+        # Recurrent Bus (3 Gates per polarity -> 24 bit matrices)
+        self.pos_bit_mats_rec = self._build_bit_mats(self.pos_masks_rec, w_rec_abs, 3).view(24, self.num_hidden, self.num_hidden)
+        self.neg_bit_mats_rec = self._build_bit_mats(self.neg_masks_rec, w_rec_abs, 3).view(24, self.num_hidden, self.num_hidden)
+
     def forward(self, x):
         batch = x.size(0)
         time_steps = x.size(1)
         
-        w_all_int = torch.cat([self.w_in_int, self.w_rec_int], dim=1)
-        w_all_abs_int = torch.abs(w_all_int)
-
         mem_hid = torch.zeros(batch, self.num_hidden, device=self.device)
         mem_out = torch.zeros(batch, self.num_outputs, device=self.device)
         spk_hid = torch.zeros(batch, self.num_hidden, device=self.device)
         spk_out_rec, spk_hid_rec = [], []
 
         for step in range(time_steps):
+            x_batched = x[:, step, :].unsqueeze(0) # (1, Batch, Inp)
+            spk_batched = spk_hid.unsqueeze(0)     # (1, Batch, Hid)
             
-            # --- 1. HIDDEN OR-BUS SIMULATION ---
-            all_spikes = torch.cat([x[:, step, :], spk_hid], dim=1)
-            pos_sum = torch.zeros(batch, self.num_hidden, dtype=torch.int32, device=self.device)
-            neg_sum = torch.zeros(batch, self.num_hidden, dtype=torch.int32, device=self.device)
+            # --- 1. COCHLEA INPUT OR-BUS ---
+            pos_counts_in = torch.matmul(x_batched, self.pos_bit_mats_in) # (8, Batch, Hid)
+            neg_counts_in = torch.matmul(x_batched, self.neg_bit_mats_in)
             
-            for g in range(3):
-                w_gate_pos = w_all_abs_int * self.pos_masks[g]
-                w_gate_neg = w_all_abs_int * self.neg_masks[g]
-                
-                active_pos = all_spikes.unsqueeze(1).int() * w_gate_pos.unsqueeze(0).int()
-                active_neg = all_spikes.unsqueeze(1).int() * w_gate_neg.unsqueeze(0).int()
-                
-                for bit in range(8):
-                    bit_mask = 1 << bit
-                    pos_sum += ((active_pos & bit_mask) != 0).any(dim=-1).int() << bit
-                    neg_sum += ((active_neg & bit_mask) != 0).any(dim=-1).int() << bit
-                    
-            hw_sum_int = pos_sum - neg_sum
+            pos_int_in = ((pos_counts_in > 0).int().view(1, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0, 1))
+            neg_int_in = ((neg_counts_in > 0).int().view(1, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0, 1))
+            
+            # --- 2. RECURRENT HIDDEN OR-BUS ---
+            pos_counts_rec = torch.matmul(spk_batched, self.pos_bit_mats_rec) # (24, Batch, Hid)
+            neg_counts_rec = torch.matmul(spk_batched, self.neg_bit_mats_rec)
+            
+            pos_int_rec = ((pos_counts_rec > 0).int().view(3, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0, 1))
+            neg_int_rec = ((neg_counts_rec > 0).int().view(3, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0, 1))
+            
+            # --- 3. ALU INTEGRATION ---
+            # Total hardware integer sum
+            hw_sum_int = (pos_int_in - neg_int_in) + (pos_int_rec - neg_int_rec)
+            # Physical voltage conversion
             hw_sum_float = hw_sum_int.float() * self.global_delta
             
-            # ALU Integration
             ideal_mem_hid = (mem_hid * self.beta_hid.unsqueeze(0)) + hw_sum_float
             
-            # Sub-integer floor & Saturation Caps
             limit_hid = (self.max_mem_hid * self.lsb_hid).unsqueeze(0)
             ideal_mem_hid = torch.clamp(ideal_mem_hid, min=-limit_hid, max=limit_hid)
             hw_mem_hid = torch.floor((ideal_mem_hid / self.lsb_hid.unsqueeze(0)) + 1e-5) * self.lsb_hid.unsqueeze(0)
             mem_hid = hw_mem_hid
             
-            # Fire & Zero-Reset
             spk_hid = (mem_hid >= self.thresh_hid).float()
             mem_hid = mem_hid * (1.0 - spk_hid) 
             spk_hid_rec.append(spk_hid)
             
-            # --- 2. OUTPUT ALGEBRA (Standard Matrix) ---
+            # --- 4. OUTPUT ALGEBRA ---
             cur_out_int = torch.matmul(spk_hid.int(), self.w_out_int.t())
             cur_out_float = cur_out_int.float() * self.delta_out
             
@@ -178,7 +205,7 @@ def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
     all_in_spikes, all_hidden_spikes = [], []
     
     with torch.no_grad():
-        for x, y in tqdm(data_loader, desc="Running Diagnostic Verification", leave=False):
+        for x, y in tqdm(data_loader, desc="Running Hardware Verification", leave=False):
             x, y = x.to(device), y.to(device)
             spk_out, spk_hidden = model(x)
             spike_counts = spk_out.sum(dim=1)
@@ -216,68 +243,58 @@ def main():
     inv_labels = {v: k for k, v in labels_map.items()}
     num_classes = config["num_outputs"]
 
-    # 1. Build the Fitness Arena (Mega-Batch)
-    # We grab a large chunk of training data to evaluate mutations instantly
-    val_x, val_y = [], []
-    for i, (x, y) in enumerate(train_loader):
-        val_x.append(x)
-        val_y.append(y)
-        if i >= 4: break # ~320 samples for instant grading
-    x_val = torch.cat(val_x, dim=0).to(device)
-    y_val = torch.cat(val_y, dim=0).to(device)
-    total_val_samples = y_val.size(0)
-
-    # 2. Initialize Champion
     champion = PureIntegerHardwareNet(config, device).to(device)
-    champ_correct, champ_margin = evaluate_fitness(champion, x_val, y_val, idx_silence)
-    
-    print(f"\n🚀 Baseline Start | Accuracy: {(champ_correct/total_val_samples)*100:.2f}% | Margin Score: {champ_margin:.1f}")
 
-    # 3. Evolution Loop
-    for gen in range(GENERATIONS):
-        print(f"Gen {gen+1:02d}/{GENERATIONS} ", end="", flush=True)
-        improved = False
-        
-        for _ in range(POP_SIZE):
-            mutant = copy.deepcopy(champion)
+    if GENERATIONS > 0:
+        val_x, val_y = [], []
+        for i, (x, y) in enumerate(train_loader):
+            val_x.append(x)
+            val_y.append(y)
+            if i >= 4: break # ~320 samples for instant grading
+        x_val = torch.cat(val_x, dim=0).to(device)
+        y_val = torch.cat(val_y, dim=0).to(device)
+        total_val_samples = y_val.size(0)
+
+        champ_correct, champ_margin = evaluate_fitness(champion, x_val, y_val, idx_silence)
+        print(f"\n🚀 Baseline Start | Accuracy: {(champ_correct/total_val_samples)*100:.2f}% | Margin Score: {champ_margin:.1f}")
+
+        for gen in range(GENERATIONS):
+            print(f"Gen {gen+1:02d}/{GENERATIONS} ", end="", flush=True)
+            improved = False
             
-            # Isolate active topological wires
-            active_in = (mutant.w_in_int != 0)
-            active_rec = (mutant.w_rec_int != 0)
-            
-            # Select 5% of active wires to mutate
-            mut_in = (torch.rand_like(mutant.w_in_int.float()) < MUTATION_RATE) & active_in
-            mut_rec = (torch.rand_like(mutant.w_rec_int.float()) < MUTATION_RATE) & active_rec
-            
-            # Nudge by -1 or +1
-            mutant.w_in_int.data += (torch.randint(-1, 2, mutant.w_in_int.shape, device=device) * mut_in.int())
-            mutant.w_rec_int.data += (torch.randint(-1, 2, mutant.w_rec_int.shape, device=device) * mut_rec.int())
-            
-            # Enforce 8-bit limits
-            mutant.w_in_int.data = torch.clamp(mutant.w_in_int, -128, 127)
-            mutant.w_rec_int.data = torch.clamp(mutant.w_rec_int, -128, 127)
-            
-            # Evaluate
-            m_correct, m_margin = evaluate_fitness(mutant, x_val, y_val, idx_silence)
-            
-            # Strict Survival of the Fittest (Favoring Accuracy, then Margin)
-            if m_correct > champ_correct or (m_correct == champ_correct and m_margin > champ_margin):
-                champion = mutant
-                champ_correct = m_correct
-                champ_margin = m_margin
-                improved = True
+            for _ in range(POP_SIZE):
+                mutant = copy.deepcopy(champion)
                 
-        if improved:
-            print(f"--> ✨ NEW CHAMPION | Acc: {(champ_correct/total_val_samples)*100:.2f}% | Margin: {champ_margin:.1f}")
-        else:
-            print(f"--> 🛡️ Champ Held")
+                active_in = (mutant.w_in_int != 0)
+                active_rec = (mutant.w_rec_int != 0)
+                
+                mut_in = (torch.rand_like(mutant.w_in_int.float()) < MUTATION_RATE) & active_in
+                mut_rec = (torch.rand_like(mutant.w_rec_int.float()) < MUTATION_RATE) & active_rec
+                
+                mutant.w_in_int.data += (torch.randint(-1, 2, mutant.w_in_int.shape, device=device) * mut_in.int())
+                mutant.w_rec_int.data += (torch.randint(-1, 2, mutant.w_rec_int.shape, device=device) * mut_rec.int())
+                
+                mutant.w_in_int.data = torch.clamp(mutant.w_in_int, -128, 127)
+                mutant.w_rec_int.data = torch.clamp(mutant.w_rec_int, -128, 127)
+                
+                # CRITICAL: Rebuild physical OR-gate constraints after mutation!
+                mutant.rebuild_bit_mats()
+                
+                m_correct, m_margin = evaluate_fitness(mutant, x_val, y_val, idx_silence)
+                
+                if m_correct > champ_correct or (m_correct == champ_correct and m_margin > champ_margin):
+                    champion = mutant
+                    champ_correct = m_correct
+                    champ_margin = m_margin
+                    improved = True
+                    
+            if improved:
+                print(f"--> ✨ NEW CHAMPION | Acc: {(champ_correct/total_val_samples)*100:.2f}% | Margin: {champ_margin:.1f}")
+            else:
+                print(f"--> 🛡️ Champ Held")
 
-    # Save the Final Synthesizable Chip
-    torch.save(champion.state_dict(), os.path.join(TARGET_FOLDER, "phase6_final_hardware_model.pth"))
+        torch.save(champion.state_dict(), os.path.join(TARGET_FOLDER, "phase6_final_hardware_model.pth"))
 
-    # ======================================================================
-    # FINAL HARDWARE DIAGNOSTICS BLOCK (On Test Set)
-    # ======================================================================
     print("\n===========================================================")
     print("        FINAL PURE INTEGER HARDWARE CHIP VERIFICATION      ")
     print("===========================================================\n")

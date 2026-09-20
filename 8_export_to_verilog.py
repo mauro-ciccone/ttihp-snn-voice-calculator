@@ -1,7 +1,19 @@
 import os
+import math
 import torch
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier"
+
+VALID_BETAS = [
+    0.0000, 0.0156, 0.0312, 0.0469, 0.0625, 0.0781, 0.0938, 0.1094, 
+    0.1250, 0.1406, 0.1562, 0.1719, 0.1875, 0.2031, 0.2188, 0.2344, 
+    0.2500, 0.2656, 0.2812, 0.2969, 0.3125, 0.3281, 0.3438, 0.3594, 
+    0.3750, 0.3906, 0.4062, 0.4219, 0.4375, 0.4531, 0.4688, 0.4844, 
+    0.5000, 0.5156, 0.5312, 0.5469, 0.5625, 0.5781, 0.5938, 0.6094, 
+    0.6250, 0.6406, 0.6562, 0.6719, 0.6875, 0.7031, 0.7188, 0.7344, 
+    0.7500, 0.7656, 0.7812, 0.7969, 0.8125, 0.8281, 0.8438, 0.8594, 
+    0.8750, 0.8906, 0.9062, 0.9219, 0.9375, 0.9531, 0.9688, 1.0000
+]
 
 def get_array(val, expected_len):
     """Safely extracts both scalar values and per-neuron arrays into a standard Python list."""
@@ -41,6 +53,7 @@ def main():
     
     w_in_wta = wta_model["w_in"].numpy()          
     w_lat_wta = wta_model["w_lat"].numpy()        
+    beta_idx_wta = wta_model["beta_idx"].numpy() # Shape: (5,)
     
     thresh_hid = int(round(1.0 / base_model["delta_in"].item()))
     thresh_out = int(round(1.0 / base_model["delta_out"].item()))
@@ -141,7 +154,17 @@ def main():
             expr = "\n        ".join(terms) if terms else "+ 0"
             f.write(f"    wire signed [11:0] sum_wta_{i} = 0\n        {expr};\n")
             f.write(f"    assign wta_spikes[{i}] = (mem_wta_{i} >= {thresh_wta});\n")
-            f.write(f"    wire signed [11:0] next_wta_{i} = mem_wta_{i} + sum_wta_{i}; // Perfect Integrator\n\n")
+            
+            # Map the exact Beta to a physical Bit-Shift Leak
+            wta_beta_val = VALID_BETAS[int(beta_idx_wta[i])]
+            if wta_beta_val >= 0.999:
+                leak_str = "" # Perfect Integrator (No Leak)
+            else:
+                leak_fraction = 1.0 - wta_beta_val
+                shift = max(1, int(round(-math.log2(leak_fraction))))
+                leak_str = f" - (mem_wta_{i} >>> {shift})"
+                
+            f.write(f"    wire signed [11:0] next_wta_{i} = mem_wta_{i}{leak_str} + sum_wta_{i};\n\n")
 
         # --- SYNCHRONOUS MEMBRANE UPDATES ---
         f.write("    // ==========================================\n")

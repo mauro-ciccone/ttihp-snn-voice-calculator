@@ -2387,7 +2387,7 @@ module snn_core (
         - (wta_spikes[3] ? 112 : 0)
         - (wta_spikes[4] ? 98 : 0);
     assign wta_spikes[0] = (mem_wta_0 >= 100);
-    wire signed [11:0] next_wta_0 = mem_wta_0 + sum_wta_0; // Perfect Integrator
+    wire signed [11:0] next_wta_0 = mem_wta_0 + sum_wta_0;
 
     reg signed [11:0] mem_wta_1;
     wire signed [11:0] sum_wta_1 = 0
@@ -2398,7 +2398,7 @@ module snn_core (
         - (wta_spikes[3] ? 106 : 0)
         - (wta_spikes[4] ? 128 : 0);
     assign wta_spikes[1] = (mem_wta_1 >= 100);
-    wire signed [11:0] next_wta_1 = mem_wta_1 + sum_wta_1; // Perfect Integrator
+    wire signed [11:0] next_wta_1 = mem_wta_1 + sum_wta_1;
 
     reg signed [11:0] mem_wta_2;
     wire signed [11:0] sum_wta_2 = 0
@@ -2409,7 +2409,7 @@ module snn_core (
         - (wta_spikes[3] ? 127 : 0)
         - (wta_spikes[4] ? 112 : 0);
     assign wta_spikes[2] = (mem_wta_2 >= 100);
-    wire signed [11:0] next_wta_2 = mem_wta_2 + sum_wta_2; // Perfect Integrator
+    wire signed [11:0] next_wta_2 = mem_wta_2 + sum_wta_2;
 
     reg signed [11:0] mem_wta_3;
     wire signed [11:0] sum_wta_3 = 0
@@ -2421,7 +2421,7 @@ module snn_core (
         - (wta_spikes[2] ? 112 : 0)
         - (wta_spikes[4] ? 123 : 0);
     assign wta_spikes[3] = (mem_wta_3 >= 100);
-    wire signed [11:0] next_wta_3 = mem_wta_3 + sum_wta_3; // Perfect Integrator
+    wire signed [11:0] next_wta_3 = mem_wta_3 + sum_wta_3;
 
     reg signed [11:0] mem_wta_4;
     wire signed [11:0] sum_wta_4 = 0
@@ -2433,7 +2433,7 @@ module snn_core (
         - (wta_spikes[2] ? 121 : 0)
         - (wta_spikes[3] ? 112 : 0);
     assign wta_spikes[4] = (mem_wta_4 >= 100);
-    wire signed [11:0] next_wta_4 = mem_wta_4 + sum_wta_4; // Perfect Integrator
+    wire signed [11:0] next_wta_4 = mem_wta_4 + sum_wta_4;
 
     // ==========================================
     // SYNCHRONOUS MEMBRANE UPDATES

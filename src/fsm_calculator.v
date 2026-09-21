@@ -70,6 +70,7 @@ module fsm_calculator (
                     end else if (timer == 13'd5000) begin
                         state   <= WAIT_OP1;
                         fsm_out <= DISP_BLANK;
+                        timer <= 13'd0;
                     end
                 end
                 WAIT_OP2: begin
@@ -80,6 +81,7 @@ module fsm_calculator (
                     end else if (timer == 13'd5000) begin
                         state   <= WAIT_OP1;
                         fsm_out <= DISP_BLANK;
+                        timer <= 13'd0;
                     end
                 end
                 SHOW_RES: begin

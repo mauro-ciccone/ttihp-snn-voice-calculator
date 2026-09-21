@@ -91,20 +91,20 @@ def main():
                 for b in range(8):
                     # Excitatory
                     j_pos = [j for j in range(num_inputs) if pos_masks_in[g, i, j] and (abs(int(w_in_int[i, j])) & (1 << b))]
-                    if j_pos: pos_terms.append("(" + " | ".join([f"cochlea_spikes[{j}]" for j in j_pos]) + f") << {b}")
+                    if j_pos: pos_terms.append("((" + " | ".join([f"cochlea_spikes[{j}]" for j in j_pos]) + f") << {b})")
                     # Inhibitory
                     j_neg = [j for j in range(num_inputs) if neg_masks_in[g, i, j] and (abs(int(w_in_int[i, j])) & (1 << b))]
-                    if j_neg: neg_terms.append("(" + " | ".join([f"cochlea_spikes[{j}]" for j in j_neg]) + f") << {b}")
+                    if j_neg: neg_terms.append("((" + " | ".join([f"cochlea_spikes[{j}]" for j in j_neg]) + f") << {b})")
             
             # Recurrent Gates
             for g in range(g_rec):
                 for b in range(8):
                     # Excitatory
                     j_pos = [j for j in range(num_hidden) if pos_masks_rec[g, i, j] and (abs(int(w_rec_int[i, j])) & (1 << b))]
-                    if j_pos: pos_terms.append("(" + " | ".join([f"hid_spikes[{j}]" for j in j_pos]) + f") << {b}")
+                    if j_pos: pos_terms.append("((" + " | ".join([f"hid_spikes[{j}]" for j in j_pos]) + f") << {b})")
                     # Inhibitory
                     j_neg = [j for j in range(num_hidden) if neg_masks_rec[g, i, j] and (abs(int(w_rec_int[i, j])) & (1 << b))]
-                    if j_neg: neg_terms.append("(" + " | ".join([f"hid_spikes[{j}]" for j in j_neg]) + f") << {b}")
+                    if j_neg: neg_terms.append("((" + " | ".join([f"hid_spikes[{j}]" for j in j_neg]) + f") << {b})")
             
             pos_expr = "\n        + ".join(pos_terms) if pos_terms else "0"
             neg_expr = "\n        + ".join(neg_terms) if neg_terms else "0"

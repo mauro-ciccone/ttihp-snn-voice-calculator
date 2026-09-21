@@ -8,7 +8,7 @@ project:
   clock_hz:     1000000       # Clock frequency in Hz (or 0 if not applicable)
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
-  tiles: "2x2"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
+  tiles: "6x2"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
   top_module:  "tt_um_snn_voice_calculator_mauro_ciccone"
@@ -27,7 +27,7 @@ project:
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: "unused"
+  ui[0]: "input for a pdm-microphone bit-stream"
   ui[1]: "unused"
   ui[2]: "unused"
   ui[3]: "unused"
@@ -37,14 +37,14 @@ pinout:
   ui[7]: "unused"
 
   # Outputs
-  uo[0]: "dummy_out_0"
-  uo[1]: "dummy_out_1"
-  uo[2]: "dummy_out_2"
-  uo[3]: "dummy_out_3"
-  uo[4]: "dummy_out_4"
-  uo[5]: "dummy_out_5"
-  uo[6]: "dummy_out_6"
-  uo[7]: "dummy_out_7"
+  uo[0]: "7_segment_led"
+  uo[1]: "7_segment_led"
+  uo[2]: "7_segment_led"
+  uo[3]: "7_segment_led"
+  uo[4]: "7_segment_led"
+  uo[5]: "7_segment_led"
+  uo[6]: "7_segment_led"
+  uo[7]: "7_segment_led"
 
   # Bidirectional pins
   uio[0]: "unused"

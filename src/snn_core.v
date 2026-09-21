@@ -10,7 +10,8 @@ module snn_core (
     // ==========================================
     // HIDDEN LAYER (OR-Gate Bitwise Synthesis)
     // ==========================================
-    wire [79:0] hid_spikes;
+    wire [127:0] hid_spikes;
+    assign hid_spikes[127:80] = 0;
 
     reg signed [11:0] mem_hid_0;
     wire signed [11:0] pos_in_0 = ((cochlea_spikes[1]) << 0)

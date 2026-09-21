@@ -10,13 +10,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-GENERATIONS = 0 
-POP_SIZE = 10
-MUTATION_RATE = 0.05
 
-# ======================================================================
-# Phase 6: PURE STANDALONE DUAL-BUS HARDWARE VERIFIER
-# ======================================================================
 class PureIntegerHardwareNet(nn.Module):
     def __init__(self, config, device):
         super().__init__()
@@ -25,8 +19,7 @@ class PureIntegerHardwareNet(nn.Module):
         self.num_inputs = config["num_inputs"]
         self.num_outputs = config["num_outputs"]
 
-        # Load the fully synchronized and patched Phase 5 Pure Integer Manifest
-        manifest_path = os.path.join(TARGET_FOLDER, "hardware_ready_85acc.pt")
+        manifest_path = os.path.join(TARGET_FOLDER, "pure_integer_model.pt")
         if not os.path.exists(manifest_path):
             raise FileNotFoundError(f"Missing {manifest_path}. Export from Phase 5 first.")
             
@@ -36,6 +29,7 @@ class PureIntegerHardwareNet(nn.Module):
         self.delta_out = manifest["delta_out"]
         self.g_in = manifest.get("g_in", 2)
         self.g_rec = manifest.get("g_rec", 1)
+        self.g_out = manifest.get("g_out", 1) # Dynamically loaded Output OR-gates
         
         self.w_in_int = nn.Parameter(manifest["w_in_int"], requires_grad=False)
         self.w_rec_int = nn.Parameter(manifest["w_rec_int"], requires_grad=False)
@@ -45,8 +39,9 @@ class PureIntegerHardwareNet(nn.Module):
         self.neg_masks_in = nn.Parameter(manifest["neg_masks_in"], requires_grad=False)
         self.pos_masks_rec = nn.Parameter(manifest["pos_masks_rec"], requires_grad=False)
         self.neg_masks_rec = nn.Parameter(manifest["neg_masks_rec"], requires_grad=False)
+        self.pos_masks_out = nn.Parameter(manifest["pos_masks_out"], requires_grad=False)
+        self.neg_masks_out = nn.Parameter(manifest["neg_masks_out"], requires_grad=False)
 
-        # Hardware Caps from the packed manifest
         self.beta_hid = manifest["beta_hid"].to(device)
         self.frac_bits_hid = manifest["frac_bits_hid"].to(device)
         self.beta_out = manifest["beta_out"].to(device)
@@ -79,11 +74,14 @@ class PureIntegerHardwareNet(nn.Module):
     def rebuild_bit_mats(self):
         w_in_abs = torch.abs(self.w_in_int.data)
         w_rec_abs = torch.abs(self.w_rec_int.data)
+        w_out_abs = torch.abs(self.w_out_int.data)
         
         self.pos_bit_mats_in = self._build_bit_mats(self.pos_masks_in, w_in_abs, self.g_in).view(self.g_in * 8, self.num_inputs, self.num_hidden)
         self.neg_bit_mats_in = self._build_bit_mats(self.neg_masks_in, w_in_abs, self.g_in).view(self.g_in * 8, self.num_inputs, self.num_hidden)
         self.pos_bit_mats_rec = self._build_bit_mats(self.pos_masks_rec, w_rec_abs, self.g_rec).view(self.g_rec * 8, self.num_hidden, self.num_hidden)
         self.neg_bit_mats_rec = self._build_bit_mats(self.neg_masks_rec, w_rec_abs, self.g_rec).view(self.g_rec * 8, self.num_hidden, self.num_hidden)
+        self.pos_bit_mats_out = self._build_bit_mats(self.pos_masks_out, w_out_abs, self.g_out).view(self.g_out * 8, self.num_hidden, self.num_outputs)
+        self.neg_bit_mats_out = self._build_bit_mats(self.neg_masks_out, w_out_abs, self.g_out).view(self.g_out * 8, self.num_hidden, self.num_outputs)
 
     def forward(self, x):
         batch = x.size(0)
@@ -98,6 +96,7 @@ class PureIntegerHardwareNet(nn.Module):
             x_batched = x[:, step, :].unsqueeze(0) 
             spk_batched = spk_hid.unsqueeze(0)     
             
+            # Hidden Layer Math (OR-Gate Simulation)
             pos_counts_in = torch.matmul(x_batched, self.pos_bit_mats_in)
             neg_counts_in = torch.matmul(x_batched, self.neg_bit_mats_in)
             pos_int_in = ((pos_counts_in > 0).int().view(self.g_in, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0, 1))
@@ -120,8 +119,15 @@ class PureIntegerHardwareNet(nn.Module):
             mem_hid = mem_hid * (1.0 - spk_hid) 
             spk_hid_rec.append(spk_hid)
             
-            cur_out_int = torch.matmul(spk_hid.int(), self.w_out_int.t())
-            cur_out_float = cur_out_int.float() * self.delta_out
+            # Base Output Layer (OR-Gate Simulation)
+            pos_counts_out = torch.matmul(spk_batched, self.pos_bit_mats_out)
+            neg_counts_out = torch.matmul(spk_batched, self.neg_bit_mats_out)
+            pos_int_out = ((pos_counts_out > 0).int().view(self.g_out, 8, batch, self.num_outputs) * self.bit_shifts).sum(dim=(0, 1))
+            neg_int_out = ((neg_counts_out > 0).int().view(self.g_out, 8, batch, self.num_outputs) * self.bit_shifts).sum(dim=(0, 1))
+            
+            hw_sum_out_int = pos_int_out - neg_int_out
+            cur_out_float = hw_sum_out_int.float() * self.delta_out
+            
             ideal_mem_out = (mem_out * self.beta_out.unsqueeze(0)) + cur_out_float
             limit_out = (self.max_mem_out * self.lsb_out).unsqueeze(0)
             ideal_mem_out = torch.clamp(ideal_mem_out, min=-limit_out, max=limit_out)
@@ -132,19 +138,6 @@ class PureIntegerHardwareNet(nn.Module):
             spk_out_rec.append(spk_out)
             
         return torch.stack(spk_out_rec, dim=1), torch.stack(spk_hid_rec, dim=1)
-
-def evaluate_fitness(model, x, y, idx_silence):
-    with torch.no_grad():
-        spk_out, _ = model(x)
-        spike_counts = spk_out.sum(dim=1)
-        max_spikes, raw_preds = spike_counts.max(dim=1)
-        preds = torch.where(max_spikes < 10, torch.tensor(idx_silence, device=model.device), raw_preds)
-        
-        correct = (preds == y).sum().item()
-        sorted_spikes, _ = torch.sort(spike_counts, dim=1, descending=True)
-        margin_diffs = (sorted_spikes[:, 0] - sorted_spikes[:, 1]).sum().item()
-        
-        return correct, margin_diffs
 
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
     model.eval()
@@ -182,67 +175,19 @@ def main():
     ledger = load_ledger(TARGET_FOLDER)
     config = ledger["base_config"]
     
-    print("\n=== Phase 6: PURE STANDALONE CHIP VERIFIER ===")
+    print("\n=== Phase 6: TRUE OR-GATE HARDWARE VERIFIER ===")
     
-    train_loader, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
+    _, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
     idx_noise = labels_map.get("noise", 6)
     idx_silence = labels_map.get("silence", 7)
     inv_labels = {v: k for k, v in labels_map.items()}
     num_classes = config["num_outputs"]
 
     champion = PureIntegerHardwareNet(config, device).to(device)
-
-    if GENERATIONS > 0:
-        val_x, val_y = [], []
-        for i, (x, y) in enumerate(train_loader):
-            val_x.append(x)
-            val_y.append(y)
-            if i >= 4: break
-        x_val = torch.cat(val_x, dim=0).to(device)
-        y_val = torch.cat(val_y, dim=0).to(device)
-        total_val_samples = y_val.size(0)
-
-        champ_correct, champ_margin = evaluate_fitness(champion, x_val, y_val, idx_silence)
-        print(f"\n🚀 Baseline Start | Accuracy: {(champ_correct/total_val_samples)*100:.2f}% | Margin Score: {champ_margin:.1f}")
-
-        for gen in range(GENERATIONS):
-            print(f"Gen {gen+1:02d}/{GENERATIONS} ", end="", flush=True)
-            improved = False
-            
-            for _ in range(POP_SIZE):
-                mutant = copy.deepcopy(champion)
-                
-                active_in = (mutant.w_in_int != 0)
-                active_rec = (mutant.w_rec_int != 0)
-                
-                mut_in = (torch.rand_like(mutant.w_in_int.float()) < MUTATION_RATE) & active_in
-                mut_rec = (torch.rand_like(mutant.w_rec_int.float()) < MUTATION_RATE) & active_rec
-                
-                mutant.w_in_int.data += (torch.randint(-1, 2, mutant.w_in_int.shape, device=device) * mut_in.int())
-                mutant.w_rec_int.data += (torch.randint(-1, 2, mutant.w_rec_int.shape, device=device) * mut_rec.int())
-                
-                mutant.w_in_int.data = torch.clamp(mutant.w_in_int, -128, 127)
-                mutant.w_rec_int.data = torch.clamp(mutant.w_rec_int, -128, 127)
-                
-                mutant.rebuild_bit_mats()
-                
-                m_correct, m_margin = evaluate_fitness(mutant, x_val, y_val, idx_silence)
-                
-                if m_correct > champ_correct or (m_correct == champ_correct and m_margin > champ_margin):
-                    champion = mutant
-                    champ_correct = m_correct
-                    champ_margin = m_margin
-                    improved = True
-                    
-            if improved:
-                print(f"--> ✨ NEW CHAMPION | Acc: {(champ_correct/total_val_samples)*100:.2f}% | Margin: {champ_margin:.1f}")
-            else:
-                print(f"--> 🛡️ Champ Held")
-
-        torch.save(champion.state_dict(), os.path.join(TARGET_FOLDER, "phase6_final_hardware_model.pth"))
-
+    
     print("\n===========================================================")
     print("        FINAL PURE INTEGER HARDWARE CHIP VERIFICATION      ")
+    print(f"        Output Gates Allocated: G_OUT = {champion.g_out}")
     print("===========================================================\n")
     
     final_test_acc, preds, targets, spike_counts, input_counts, hidden_counts = run_evaluation(champion, test_loader, device, idx_noise, idx_silence)
@@ -347,7 +292,7 @@ def main():
 
         print(f">= {margin:2d} spikes diff | Prec (Acc): {precision:5.1f}% | Retention: {keywords_attempted:3d}/{total_real_keywords:3d} ({retention_pct:5.1f}%) | Total Triggers: {total_attempts}")
         
-    print(f"\n✨ FINAL HARDWARE TEST ACCURACY: {final_test_acc:.2f}%")
+    print(f"\n✨ FINAL TRUE HARDWARE TEST ACCURACY (G_OUT={champion.g_out}): {final_test_acc:.2f}%")
 
 if __name__ == "__main__":
     main()

@@ -2,6 +2,7 @@ import os
 import torch
 from tqdm import tqdm
 from utils_ledger import load_ledger
+from dataset_cached import get_cached_dataloaders # Required for building the cache
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
@@ -28,6 +29,121 @@ VALID_BETAS = torch.tensor([
     0.8750, 0.8906, 0.9062, 0.9219, 0.9375, 0.9531, 0.9688, 1.0000
 ])
 
+def generate_cache(device, target_folder, cache_path):
+    print("\n>>> Cache missing. Generating Base Spikes Cache with full OR-Gate Physics...")
+    train_loader, _, _ = get_cached_dataloaders("data_cache", batch_size=128)
+    
+    manifest = torch.load(os.path.join(target_folder, "pure_integer_model.pt"), map_location=device)
+    
+    g_in = manifest.get("g_in", 2)
+    g_rec = manifest.get("g_rec", 1)
+    g_out = manifest.get("g_out", 4) # Dynamic fetch for new output layer setup
+    
+    w_in = manifest["w_in_int"].abs().to(device)
+    w_rec = manifest["w_rec_int"].abs().to(device)
+    w_out = manifest["w_out_int"].abs().to(device)
+    
+    def build_mats(masks, w_abs, g):
+        mats = []
+        for i in range(g):
+            w_gate = w_abs * masks[i].to(device)
+            bits = []
+            for b in range(8):
+                has_bit = ((w_gate.int() & (1 << b)) != 0).float()
+                bits.append(has_bit.t())
+            mats.append(torch.stack(bits, dim=0))
+        return torch.cat(mats, dim=0)
+
+    p_mats_in = build_mats(manifest["pos_masks_in"], w_in, g_in)
+    n_mats_in = build_mats(manifest["neg_masks_in"], w_in, g_in)
+    p_mats_rec = build_mats(manifest["pos_masks_rec"], w_rec, g_rec)
+    n_mats_rec = build_mats(manifest["neg_masks_rec"], w_rec, g_rec)
+    p_mats_out = build_mats(manifest["pos_masks_out"], w_out, g_out)
+    n_mats_out = build_mats(manifest["neg_masks_out"], w_out, g_out)
+    
+    fb_hid_t = manifest["frac_bits_hid"].to(device)
+    if fb_hid_t.numel() == 1: fb_hid_t = fb_hid_t.repeat(w_in.size(0))
+    fb_hid_t = fb_hid_t.view(1, -1).int()
+    
+    fb_out_t = manifest["frac_bits_out"].to(device)
+    if fb_out_t.numel() == 1: fb_out_t = fb_out_t.repeat(w_out.size(0))
+    fb_out_t = fb_out_t.view(1, -1).int()
+    
+    thresh_hid = int(round(1.0 / manifest["delta_in"].item()))
+    thresh_out = int(round(1.0 / manifest["delta_out"].item()))
+    
+    shifts = torch.tensor([1<<b for b in range(8)], device=device).view(1, 8, 1, 1).float()
+    
+    all_spikes = []
+    all_targets = []
+    samples_processed = 0
+    
+    with torch.no_grad():
+        for x, y in tqdm(train_loader, desc="Simulating Hardware OR-Gates"):
+            x = x.to(device)
+            y = y.to(device)
+            batch = x.size(0)
+            time_steps = x.size(1)
+            
+            mem_hid = torch.zeros(batch, w_in.size(0), device=device)
+            mem_base = torch.zeros(batch, w_out.size(0), device=device)
+            spk_hid = torch.zeros(batch, w_in.size(0), device=device)
+            
+            batch_base_spikes = []
+            
+            for t in range(time_steps):
+                xt = x[:, t, :].unsqueeze(0) 
+                st = spk_hid.unsqueeze(0)    
+                
+                # Hidden Layer Math (OR-Gate Simulation)
+                p_in_cnt = torch.matmul(xt, p_mats_in)
+                n_in_cnt = torch.matmul(xt, n_mats_in)
+                p_rec_cnt = torch.matmul(st, p_mats_rec)
+                n_rec_cnt = torch.matmul(st, n_mats_rec)
+                
+                pos_in = ((p_in_cnt > 0).float().view(g_in, 8, batch, -1) * shifts).sum(dim=(0,1))
+                neg_in = ((n_in_cnt > 0).float().view(g_in, 8, batch, -1) * shifts).sum(dim=(0,1))
+                pos_rec = ((p_rec_cnt > 0).float().view(g_rec, 8, batch, -1) * shifts).sum(dim=(0,1))
+                neg_rec = ((n_rec_cnt > 0).float().view(g_rec, 8, batch, -1) * shifts).sum(dim=(0,1))
+                
+                sum_hid = (pos_in - neg_in) + (pos_rec - neg_rec)
+                
+                mem_hid_leak = torch.bitwise_right_shift(mem_hid.int(), fb_hid_t).float()
+                mem_hid = mem_hid - mem_hid_leak + sum_hid
+                spk_hid = (mem_hid >= thresh_hid).float()
+                mem_hid = mem_hid * (1.0 - spk_hid)
+                
+                # Base Output Layer Math (OR-Gate Simulation)
+                st_base = spk_hid.unsqueeze(0)
+                p_out_cnt = torch.matmul(st_base, p_mats_out)
+                n_out_cnt = torch.matmul(st_base, n_mats_out)
+                
+                pos_out = ((p_out_cnt > 0).float().view(g_out, 8, batch, -1) * shifts).sum(dim=(0,1))
+                neg_out = ((n_out_cnt > 0).float().view(g_out, 8, batch, -1) * shifts).sum(dim=(0,1))
+                
+                sum_base = pos_out - neg_out
+                
+                mem_base_leak = torch.bitwise_right_shift(mem_base.int(), fb_out_t).float()
+                mem_base = mem_base - mem_base_leak + sum_base
+                spk_base = (mem_base >= thresh_out).float()
+                mem_base = mem_base * (1.0 - spk_base)
+                
+                batch_base_spikes.append(spk_base)
+                
+            all_spikes.append(torch.stack(batch_base_spikes, dim=1))
+            all_targets.append(y)
+            
+            samples_processed += batch
+            if samples_processed >= 1500:
+                break
+                
+    spikes_tensor = torch.cat(all_spikes, dim=0)[:1500]
+    targets_tensor = torch.cat(all_targets, dim=0)[:1500]
+    
+    torch.save({"spikes": spikes_tensor, "targets": targets_tensor}, cache_path)
+    print(f"✅ Cache generated and saved to {cache_path}")
+
+
 def main():
     device = torch.device("cpu") 
     
@@ -35,7 +151,7 @@ def main():
     
     cache_path = os.path.join(TARGET_FOLDER, "base_spikes_cache.pt")
     if not os.path.exists(cache_path):
-        raise FileNotFoundError("Cache missing. Run the previous GA script once to generate it.")
+        generate_cache(device, TARGET_FOLDER, cache_path)
         
     data = torch.load(cache_path, map_location=device)
     spikes_tensor = data["spikes"]
@@ -45,7 +161,7 @@ def main():
     time_steps = spikes_tensor.size(1)
     
     # We use a massive arena for ultimate accuracy mapping
-    ARENA_SIZE = min(1500, num_samples)
+    ARENA_SIZE = min(800, num_samples)
     arena_spikes = spikes_tensor[:ARENA_SIZE].to(device)
     arena_targets = targets_tensor[:ARENA_SIZE].to(device)
     print(f">>> Fine-tuning asymmetric weights on {ARENA_SIZE} samples.")
@@ -66,11 +182,11 @@ def main():
     pop_beta_idx = torch.randint(60, 64, (POP_SIZE, NUM_KEYWORDS), device=device)
     
     # --- 2. INJECT GOLDEN SYMMETRIC SEED (Top 50% of population) ---
-    seed_count = int(POP_SIZE * 0.50)
+    seed_count = int(POP_SIZE * 0.80)
     
     # W_exc = +6, W_inh = -1
     ideal_w_in = torch.full((NUM_KEYWORDS, NUM_KEYWORDS), -1.0, device=device)
-    ideal_w_in.fill_diagonal_(6.0) 
+    ideal_w_in.fill_diagonal_(18.0) 
     
     # Noise = -2
     ideal_w_in = torch.cat([ideal_w_in, torch.full((NUM_KEYWORDS, 1), -2.0, device=device)], dim=-1)
@@ -80,7 +196,7 @@ def main():
     
     pop_w_in[:seed_count] = ideal_w_in.unsqueeze(0).repeat(seed_count, 1, 1)
     pop_w_lat[:seed_count] = ideal_w_lat.unsqueeze(0).repeat(seed_count, 1, 1)
-    pop_beta_idx[:seed_count] = 63 # 1.000 (No leak)
+    pop_beta_idx[:seed_count] = 62 # 1.000 (No leak)
     
     # Add slight random asymmetric noise to the seeds (+/- 1) to break the symmetry
     if seed_count > 1:

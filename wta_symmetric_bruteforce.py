@@ -49,10 +49,10 @@ def main():
 
     # 1. Define the Collapsed Search Space
     # To get exactly 1 spike with a threshold of 100 and ~45 inputs, W_exc MUST be between 3 and 5.
-    w_exc_vals = torch.arange(0, 20, 1, device=device)         
-    w_inh_vals = torch.arange(-20, 0, 1, device=device)        
+    w_exc_vals = torch.arange(16, 60, 1, device=device)         
+    w_inh_vals = torch.arange(-30, 0, 1, device=device)        
     w_lat_vals = torch.tensor([-128, -64, -32, 0], device=device) # Hardware signed 8-bit limits
-    beta_idx_vals = torch.arange(54, 64, 1, device=device)    # Very slow leaks to perfect integration
+    beta_idx_vals = torch.arange(52, 64, 1, device=device)    # Very slow leaks to perfect integration
     
     # 2. Build the Combinatorial Grid
     grid = torch.cartesian_prod(w_exc_vals, w_inh_vals, w_lat_vals, beta_idx_vals)

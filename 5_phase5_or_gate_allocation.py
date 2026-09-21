@@ -9,7 +9,7 @@ SPARSE_CHECKPOINT = "acc86.3_sparsity22.5.pth"
 # --- FINAL HARDWARE BUDGET ---
 G_IN = 2   
 G_REC = 1
-G_OUT = 1
+G_OUT = 8
 
 VALID_BETAS = torch.tensor([
     0.0000, 0.0156, 0.0312, 0.0469, 0.0625, 0.0781, 0.0938, 0.1094, 

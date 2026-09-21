@@ -78,7 +78,8 @@ def main():
         f.write("    // ==========================================\n")
         f.write("    // HIDDEN LAYER (OR-Gate Bitwise Synthesis)\n")
         f.write("    // ==========================================\n")
-        f.write(f"    wire [{num_hidden-1}:0] hid_spikes;\n\n")
+        f.write("    wire [127:0] hid_spikes;\n")
+        f.write(f"    assign hid_spikes[127:{num_hidden}] = 0;\n\n")
         
         for i in range(num_hidden):
             f.write(f"    reg signed [11:0] mem_hid_{i};\n")

@@ -1958,694 +1958,378 @@ module snn_core (
     // BASE OUTPUT LAYER (OR-Gate Bitwise Synthesis)
     // ==========================================
     reg signed [11:0] mem_base_0;
-    wire signed [11:0] pos_in_base_0 = (hid_spikes[43]) << 0
-        + (hid_spikes[6] | hid_spikes[51]) << 1
-        + (hid_spikes[6] | hid_spikes[43]) << 2
-        + (hid_spikes[43]) << 3
-        + (hid_spikes[3] | hid_spikes[6]) << 4
-        + (hid_spikes[3] | hid_spikes[51]) << 5
+    wire signed [11:0] pos_in_base_0 = (hid_spikes[13] | hid_spikes[40] | hid_spikes[43] | hid_spikes[49] | hid_spikes[50]) << 0
+        + (hid_spikes[40] | hid_spikes[49] | hid_spikes[50] | hid_spikes[58]) << 1
+        + (hid_spikes[13] | hid_spikes[27] | hid_spikes[43] | hid_spikes[44] | hid_spikes[49] | hid_spikes[50] | hid_spikes[58] | hid_spikes[77]) << 2
+        + (hid_spikes[13] | hid_spikes[43] | hid_spikes[58]) << 3
+        + (hid_spikes[13] | hid_spikes[27] | hid_spikes[40] | hid_spikes[44] | hid_spikes[50]) << 4
+        + (hid_spikes[27] | hid_spikes[40] | hid_spikes[49] | hid_spikes[77]) << 5
         + (hid_spikes[43]) << 6
-        + (hid_spikes[49] | hid_spikes[50]) << 0
-        + (hid_spikes[35] | hid_spikes[49] | hid_spikes[50]) << 1
-        + (hid_spikes[49] | hid_spikes[50]) << 2
-        + (hid_spikes[17] | hid_spikes[35]) << 3
-        + (hid_spikes[50]) << 4
-        + (hid_spikes[35] | hid_spikes[49]) << 5
+        + (hid_spikes[23] | hid_spikes[52] | hid_spikes[56] | hid_spikes[59]) << 0
+        + (hid_spikes[6] | hid_spikes[26] | hid_spikes[51] | hid_spikes[52] | hid_spikes[59]) << 1
+        + (hid_spikes[1] | hid_spikes[6] | hid_spikes[23] | hid_spikes[52] | hid_spikes[56]) << 2
+        + (hid_spikes[1] | hid_spikes[17] | hid_spikes[23]) << 3
+        + (hid_spikes[1] | hid_spikes[6] | hid_spikes[26] | hid_spikes[56] | hid_spikes[59]) << 4
+        + (hid_spikes[26] | hid_spikes[51] | hid_spikes[52] | hid_spikes[56]) << 5
         + (hid_spikes[17]) << 6
-        + (hid_spikes[8] | hid_spikes[20] | hid_spikes[42]) << 0
-        + (hid_spikes[20] | hid_spikes[45] | hid_spikes[58]) << 1
-        + (hid_spikes[20] | hid_spikes[42] | hid_spikes[45] | hid_spikes[58]) << 2
-        + (hid_spikes[58]) << 3
-        + (hid_spikes[20] | hid_spikes[45]) << 4
-        + (hid_spikes[8] | hid_spikes[20] | hid_spikes[42]) << 5
-        + (hid_spikes[21] | hid_spikes[23]) << 0
-        + (hid_spikes[21]) << 1
-        + (hid_spikes[21] | hid_spikes[23] | hid_spikes[29] | hid_spikes[77]) << 2
-        + (hid_spikes[23]) << 3
-        + (hid_spikes[21] | hid_spikes[29]) << 4
-        + (hid_spikes[5] | hid_spikes[21] | hid_spikes[77]) << 5
-        + (hid_spikes[13] | hid_spikes[52] | hid_spikes[56]) << 0
-        + (hid_spikes[52]) << 1
-        + (hid_spikes[13] | hid_spikes[44] | hid_spikes[52] | hid_spikes[56]) << 2
-        + (hid_spikes[13]) << 3
-        + (hid_spikes[13] | hid_spikes[44] | hid_spikes[56]) << 4
-        + (hid_spikes[52] | hid_spikes[56]) << 5
-        + (hid_spikes[39] | hid_spikes[48] | hid_spikes[59]) << 0
-        + (hid_spikes[48] | hid_spikes[59]) << 1
-        + (hid_spikes[27]) << 2
+        + (hid_spikes[8] | hid_spikes[20] | hid_spikes[22] | hid_spikes[39] | hid_spikes[48]) << 0
+        + (hid_spikes[20] | hid_spikes[45] | hid_spikes[48]) << 1
+        + (hid_spikes[20] | hid_spikes[22] | hid_spikes[45]) << 2
         + (hid_spikes[39] | hid_spikes[48]) << 3
-        + (hid_spikes[27] | hid_spikes[48] | hid_spikes[59]) << 4
-        + (hid_spikes[27] | hid_spikes[39]) << 5
-        + (hid_spikes[22] | hid_spikes[40]) << 0
-        + (hid_spikes[40]) << 1
-        + (hid_spikes[1] | hid_spikes[22]) << 2
-        + (hid_spikes[1]) << 3
-        + (hid_spikes[1] | hid_spikes[34] | hid_spikes[40]) << 4
-        + (hid_spikes[22] | hid_spikes[40]) << 5
-        + (hid_spikes[46]) << 0
-        + (hid_spikes[9] | hid_spikes[26] | hid_spikes[46]) << 1
-        + (hid_spikes[46]) << 2
-        + (hid_spikes[9]) << 3
-        + (hid_spikes[9] | hid_spikes[26] | hid_spikes[71]) << 4
-        + (hid_spikes[26] | hid_spikes[46]) << 5;
-    wire signed [11:0] neg_in_base_0 = (hid_spikes[24]) << 0
-        + (hid_spikes[24]) << 1
-        + (hid_spikes[24]) << 2
-        + (hid_spikes[24] | hid_spikes[38]) << 3
-        + (hid_spikes[24]) << 4
-        + (hid_spikes[38]) << 5
-        + (hid_spikes[11]) << 7
-        + (hid_spikes[18] | hid_spikes[25] | hid_spikes[69]) << 0
-        + (hid_spikes[69]) << 1
-        + (hid_spikes[18] | hid_spikes[25] | hid_spikes[69]) << 2
-        + (hid_spikes[18]) << 3
-        + (hid_spikes[25]) << 4
-        + (hid_spikes[69]) << 5
-        + (hid_spikes[30]) << 7
-        + (hid_spikes[60] | hid_spikes[70]) << 0
-        + (hid_spikes[60]) << 1
-        + (hid_spikes[37] | hid_spikes[70]) << 2
-        + (hid_spikes[37] | hid_spikes[60]) << 4
-        + (hid_spikes[70]) << 5
-        + (hid_spikes[73]) << 7
-        + (hid_spikes[36]) << 0
-        + (hid_spikes[36]) << 1
-        + (hid_spikes[66]) << 2
-        + (hid_spikes[47]) << 3
-        + (hid_spikes[47] | hid_spikes[66]) << 4
-        + (hid_spikes[36]) << 5
-        + (hid_spikes[47]) << 6
-        + (hid_spikes[10] | hid_spikes[54] | hid_spikes[63]) << 0
-        + (hid_spikes[63]) << 1
-        + (hid_spikes[10]) << 2
-        + (hid_spikes[10]) << 4
-        + (hid_spikes[54]) << 5
-        + (hid_spikes[63]) << 6
-        + (hid_spikes[62] | hid_spikes[64] | hid_spikes[74]) << 0
-        + (hid_spikes[64] | hid_spikes[74]) << 1
-        + (hid_spikes[74]) << 2
-        + (hid_spikes[62]) << 3
-        + (hid_spikes[62] | hid_spikes[64] | hid_spikes[74]) << 4
-        + (hid_spikes[62]) << 5
-        + (hid_spikes[65]) << 0
-        + (hid_spikes[15] | hid_spikes[65]) << 1
-        + (hid_spikes[4]) << 2
-        + (hid_spikes[4] | hid_spikes[65]) << 3
-        + (hid_spikes[15] | hid_spikes[65]) << 4
-        + (hid_spikes[4]) << 5
-        + (hid_spikes[67] | hid_spikes[68]) << 0
-        + (hid_spikes[67]) << 1
-        + (hid_spikes[67] | hid_spikes[79]) << 2
+        + (hid_spikes[3] | hid_spikes[20] | hid_spikes[34] | hid_spikes[45] | hid_spikes[48]) << 4
+        + (hid_spikes[3] | hid_spikes[8] | hid_spikes[20] | hid_spikes[22] | hid_spikes[39]) << 5
+        + (hid_spikes[21] | hid_spikes[42] | hid_spikes[46]) << 0
+        + (hid_spikes[9] | hid_spikes[21] | hid_spikes[35] | hid_spikes[46]) << 1
+        + (hid_spikes[21] | hid_spikes[29] | hid_spikes[42] | hid_spikes[46]) << 2
+        + (hid_spikes[9] | hid_spikes[35]) << 3
+        + (hid_spikes[9] | hid_spikes[21] | hid_spikes[29] | hid_spikes[71]) << 4
+        + (hid_spikes[5] | hid_spikes[21] | hid_spikes[35] | hid_spikes[42] | hid_spikes[46]) << 5;
+    wire signed [11:0] neg_in_base_0 = (hid_spikes[54] | hid_spikes[63] | hid_spikes[67] | hid_spikes[68]) << 0
+        + (hid_spikes[63] | hid_spikes[67]) << 1
+        + (hid_spikes[66] | hid_spikes[67] | hid_spikes[79]) << 2
         + (hid_spikes[79]) << 3
-        + (hid_spikes[67] | hid_spikes[68]) << 4
-        + (hid_spikes[79]) << 5;
+        + (hid_spikes[66] | hid_spikes[67] | hid_spikes[68]) << 4
+        + (hid_spikes[54] | hid_spikes[79]) << 5
+        + (hid_spikes[63]) << 6
+        + (hid_spikes[11]) << 7
+        + (hid_spikes[10] | hid_spikes[18] | hid_spikes[24] | hid_spikes[60] | hid_spikes[62] | hid_spikes[70]) << 0
+        + (hid_spikes[24] | hid_spikes[60]) << 1
+        + (hid_spikes[10] | hid_spikes[18] | hid_spikes[24] | hid_spikes[70]) << 2
+        + (hid_spikes[18] | hid_spikes[24] | hid_spikes[62]) << 3
+        + (hid_spikes[10] | hid_spikes[24] | hid_spikes[60] | hid_spikes[62]) << 4
+        + (hid_spikes[62] | hid_spikes[70]) << 5
+        + (hid_spikes[30]) << 7
+        + (hid_spikes[25] | hid_spikes[36] | hid_spikes[64] | hid_spikes[65]) << 0
+        + (hid_spikes[36] | hid_spikes[64] | hid_spikes[65]) << 1
+        + (hid_spikes[4] | hid_spikes[25]) << 2
+        + (hid_spikes[4] | hid_spikes[65]) << 3
+        + (hid_spikes[25] | hid_spikes[64] | hid_spikes[65]) << 4
+        + (hid_spikes[4] | hid_spikes[36]) << 5
+        + (hid_spikes[73]) << 7
+        + (hid_spikes[69] | hid_spikes[74]) << 0
+        + (hid_spikes[15] | hid_spikes[69] | hid_spikes[74]) << 1
+        + (hid_spikes[37] | hid_spikes[69] | hid_spikes[74]) << 2
+        + (hid_spikes[38] | hid_spikes[47]) << 3
+        + (hid_spikes[15] | hid_spikes[37] | hid_spikes[47] | hid_spikes[74]) << 4
+        + (hid_spikes[38] | hid_spikes[69]) << 5
+        + (hid_spikes[47]) << 6;
     wire signed [11:0] sum_base_0 = pos_in_base_0 - neg_in_base_0;
     assign base_spikes[0] = (mem_base_0 >= 85);
     wire signed [11:0] next_base_0 = mem_base_0 - (mem_base_0 >>> 6) + sum_base_0;
 
     reg signed [11:0] mem_base_1;
-    wire signed [11:0] pos_in_base_1 = (hid_spikes[8] | hid_spikes[48]) << 0
-        + (hid_spikes[48]) << 1
-        + (hid_spikes[8] | hid_spikes[63]) << 2
-        + (hid_spikes[12] | hid_spikes[48]) << 3
-        + (hid_spikes[8] | hid_spikes[48]) << 4
-        + (hid_spikes[12] | hid_spikes[48]) << 5
-        + (hid_spikes[48] | hid_spikes[63]) << 6
-        + (hid_spikes[13] | hid_spikes[30] | hid_spikes[59]) << 0
-        + (hid_spikes[30]) << 1
-        + (hid_spikes[27]) << 2
-        + (hid_spikes[27] | hid_spikes[30] | hid_spikes[59]) << 3
-        + (hid_spikes[13] | hid_spikes[27] | hid_spikes[59]) << 4
-        + (hid_spikes[30] | hid_spikes[59]) << 5
-        + (hid_spikes[27]) << 6
-        + (hid_spikes[60]) << 0
-        + (hid_spikes[61]) << 1
-        + (hid_spikes[60]) << 2
-        + (hid_spikes[36] | hid_spikes[60] | hid_spikes[61]) << 3
-        + (hid_spikes[1] | hid_spikes[36] | hid_spikes[60]) << 4
-        + (hid_spikes[60] | hid_spikes[61]) << 5
-        + (hid_spikes[36]) << 6
-        + (hid_spikes[20] | hid_spikes[21] | hid_spikes[53]) << 0
-        + (hid_spikes[35]) << 1
-        + (hid_spikes[20] | hid_spikes[21]) << 2
-        + (hid_spikes[21]) << 3
-        + (hid_spikes[20] | hid_spikes[53]) << 4
-        + (hid_spikes[21] | hid_spikes[35] | hid_spikes[53]) << 5
-        + (hid_spikes[20]) << 6
-        + (hid_spikes[5] | hid_spikes[40]) << 0
-        + (hid_spikes[40]) << 1
-        + (hid_spikes[5] | hid_spikes[15]) << 2
-        + (hid_spikes[15]) << 3
-        + (hid_spikes[3] | hid_spikes[15] | hid_spikes[40]) << 4
-        + (hid_spikes[5] | hid_spikes[15]) << 5
-        + (hid_spikes[40]) << 6
-        + (hid_spikes[74]) << 0
-        + (hid_spikes[39] | hid_spikes[74] | hid_spikes[78]) << 1
-        + (hid_spikes[57] | hid_spikes[78]) << 2
-        + (hid_spikes[57] | hid_spikes[74] | hid_spikes[78]) << 3
-        + (hid_spikes[57]) << 4
-        + (hid_spikes[39] | hid_spikes[57]) << 5
-        + (hid_spikes[74]) << 6
-        + (hid_spikes[65] | hid_spikes[67] | hid_spikes[71]) << 0
-        + (hid_spikes[45]) << 1
-        + (hid_spikes[45] | hid_spikes[65]) << 2
-        + (hid_spikes[65] | hid_spikes[67] | hid_spikes[71]) << 3
-        + (hid_spikes[45] | hid_spikes[67]) << 4
-        + (hid_spikes[45]) << 5
-        + (hid_spikes[71]) << 6
-        + (hid_spikes[17] | hid_spikes[49]) << 0
+    wire signed [11:0] pos_in_base_1 = (hid_spikes[5] | hid_spikes[17] | hid_spikes[21] | hid_spikes[48] | hid_spikes[59]) << 0
+        + (hid_spikes[45] | hid_spikes[48]) << 1
+        + (hid_spikes[5] | hid_spikes[17] | hid_spikes[21] | hid_spikes[45]) << 2
+        + (hid_spikes[21] | hid_spikes[48] | hid_spikes[52] | hid_spikes[59]) << 3
+        + (hid_spikes[3] | hid_spikes[45] | hid_spikes[48] | hid_spikes[52] | hid_spikes[59]) << 4
+        + (hid_spikes[5] | hid_spikes[21] | hid_spikes[45] | hid_spikes[48] | hid_spikes[59]) << 5
+        + (hid_spikes[17] | hid_spikes[48]) << 6
+        + (hid_spikes[8] | hid_spikes[30] | hid_spikes[40] | hid_spikes[53] | hid_spikes[60]) << 0
+        + (hid_spikes[30] | hid_spikes[35] | hid_spikes[40] | hid_spikes[78]) << 1
+        + (hid_spikes[8] | hid_spikes[27] | hid_spikes[60] | hid_spikes[78]) << 2
+        + (hid_spikes[27] | hid_spikes[30] | hid_spikes[60] | hid_spikes[78]) << 3
+        + (hid_spikes[8] | hid_spikes[27] | hid_spikes[40] | hid_spikes[53] | hid_spikes[60]) << 4
+        + (hid_spikes[30] | hid_spikes[35] | hid_spikes[53] | hid_spikes[60]) << 5
+        + (hid_spikes[27] | hid_spikes[40]) << 6
+        + (hid_spikes[13] | hid_spikes[65] | hid_spikes[74]) << 0
+        + (hid_spikes[39] | hid_spikes[61] | hid_spikes[74]) << 1
+        + (hid_spikes[57] | hid_spikes[63] | hid_spikes[65]) << 2
+        + (hid_spikes[36] | hid_spikes[57] | hid_spikes[61] | hid_spikes[65] | hid_spikes[74]) << 3
+        + (hid_spikes[13] | hid_spikes[36] | hid_spikes[57]) << 4
+        + (hid_spikes[39] | hid_spikes[57] | hid_spikes[61]) << 5
+        + (hid_spikes[36] | hid_spikes[63] | hid_spikes[74]) << 6
+        + (hid_spikes[20] | hid_spikes[49] | hid_spikes[67] | hid_spikes[71]) << 0
         + (hid_spikes[49]) << 1
-        + (hid_spikes[17]) << 2
-        + (hid_spikes[49] | hid_spikes[52]) << 3
-        + (hid_spikes[49] | hid_spikes[52]) << 4
-        + (hid_spikes[49]) << 5
-        + (hid_spikes[17]) << 6;
-    wire signed [11:0] neg_in_base_1 = (hid_spikes[32]) << 0
-        + (hid_spikes[19] | hid_spikes[73]) << 1
-        + (hid_spikes[19]) << 2
-        + (hid_spikes[73]) << 3
-        + (hid_spikes[32] | hid_spikes[72]) << 4
-        + (hid_spikes[72] | hid_spikes[73]) << 5
-        + (hid_spikes[19] | hid_spikes[32]) << 6
+        + (hid_spikes[15] | hid_spikes[20]) << 2
+        + (hid_spikes[12] | hid_spikes[15] | hid_spikes[49] | hid_spikes[67] | hid_spikes[71]) << 3
+        + (hid_spikes[1] | hid_spikes[15] | hid_spikes[20] | hid_spikes[49] | hid_spikes[67]) << 4
+        + (hid_spikes[12] | hid_spikes[15] | hid_spikes[49]) << 5
+        + (hid_spikes[20] | hid_spikes[71]) << 6;
+    wire signed [11:0] neg_in_base_1 = (hid_spikes[0]) << 0
+        + (hid_spikes[0] | hid_spikes[2] | hid_spikes[19] | hid_spikes[73]) << 1
+        + (hid_spikes[19] | hid_spikes[29]) << 2
+        + (hid_spikes[0] | hid_spikes[29] | hid_spikes[73]) << 3
+        + (hid_spikes[2] | hid_spikes[29] | hid_spikes[33] | hid_spikes[50]) << 4
+        + (hid_spikes[0] | hid_spikes[33] | hid_spikes[68] | hid_spikes[73]) << 5
+        + (hid_spikes[0] | hid_spikes[2] | hid_spikes[19]) << 6
         + (hid_spikes[11]) << 7
-        + (hid_spikes[14] | hid_spikes[26]) << 0
-        + (hid_spikes[14] | hid_spikes[51]) << 1
-        + (hid_spikes[24] | hid_spikes[26] | hid_spikes[51]) << 2
-        + (hid_spikes[14] | hid_spikes[24] | hid_spikes[26] | hid_spikes[51]) << 3
-        + (hid_spikes[26] | hid_spikes[51]) << 4
-        + (hid_spikes[51]) << 5
-        + (hid_spikes[14]) << 6
-        + (hid_spikes[47]) << 7
-        + (hid_spikes[31] | hid_spikes[43] | hid_spikes[76]) << 0
-        + (hid_spikes[23] | hid_spikes[43]) << 1
-        + (hid_spikes[31] | hid_spikes[43]) << 2
-        + (hid_spikes[31] | hid_spikes[43] | hid_spikes[76]) << 3
-        + (hid_spikes[31] | hid_spikes[43]) << 4
-        + (hid_spikes[23] | hid_spikes[43] | hid_spikes[76]) << 5
-        + (hid_spikes[43]) << 6
-        + (hid_spikes[54] | hid_spikes[70]) << 0
-        + (hid_spikes[62] | hid_spikes[70]) << 1
-        + (hid_spikes[29] | hid_spikes[54] | hid_spikes[62]) << 2
-        + (hid_spikes[29] | hid_spikes[54]) << 3
-        + (hid_spikes[29] | hid_spikes[62] | hid_spikes[70]) << 4
-        + (hid_spikes[54] | hid_spikes[62] | hid_spikes[70]) << 5
-        + (hid_spikes[62]) << 6
-        + (hid_spikes[0] | hid_spikes[66]) << 0
-        + (hid_spikes[0] | hid_spikes[18] | hid_spikes[42] | hid_spikes[66]) << 1
-        + (hid_spikes[18]) << 2
-        + (hid_spikes[0] | hid_spikes[66]) << 3
-        + (hid_spikes[18] | hid_spikes[66]) << 4
-        + (hid_spikes[0] | hid_spikes[18] | hid_spikes[42]) << 5
-        + (hid_spikes[0]) << 6
-        + (hid_spikes[22] | hid_spikes[75]) << 0
-        + (hid_spikes[75]) << 1
-        + (hid_spikes[22] | hid_spikes[75]) << 2
-        + (hid_spikes[75]) << 3
-        + (hid_spikes[22] | hid_spikes[33] | hid_spikes[75]) << 4
-        + (hid_spikes[33] | hid_spikes[68]) << 5
+        + (hid_spikes[56] | hid_spikes[66] | hid_spikes[75] | hid_spikes[76] | hid_spikes[79]) << 0
+        + (hid_spikes[44] | hid_spikes[56] | hid_spikes[66] | hid_spikes[75]) << 1
+        + (hid_spikes[24] | hid_spikes[44] | hid_spikes[56] | hid_spikes[75] | hid_spikes[79]) << 2
+        + (hid_spikes[24] | hid_spikes[44] | hid_spikes[56] | hid_spikes[66] | hid_spikes[75] | hid_spikes[76] | hid_spikes[79]) << 3
+        + (hid_spikes[44] | hid_spikes[56] | hid_spikes[66] | hid_spikes[72] | hid_spikes[75] | hid_spikes[79]) << 4
+        + (hid_spikes[44] | hid_spikes[72] | hid_spikes[76] | hid_spikes[79]) << 5
         + (hid_spikes[75]) << 6
-        + (hid_spikes[56] | hid_spikes[79]) << 0
-        + (hid_spikes[4] | hid_spikes[46] | hid_spikes[56]) << 1
-        + (hid_spikes[56] | hid_spikes[79]) << 2
-        + (hid_spikes[4] | hid_spikes[56] | hid_spikes[79]) << 3
-        + (hid_spikes[4] | hid_spikes[46] | hid_spikes[56] | hid_spikes[79]) << 4
-        + (hid_spikes[79]) << 5
-        + (hid_spikes[4]) << 6
-        + (hid_spikes[6]) << 0
-        + (hid_spikes[2] | hid_spikes[6] | hid_spikes[44]) << 1
-        + (hid_spikes[44]) << 2
-        + (hid_spikes[6] | hid_spikes[44]) << 3
-        + (hid_spikes[2] | hid_spikes[44] | hid_spikes[50]) << 4
-        + (hid_spikes[6] | hid_spikes[44]) << 5
-        + (hid_spikes[2]) << 6;
+        + (hid_spikes[47]) << 7
+        + (hid_spikes[14] | hid_spikes[22] | hid_spikes[26] | hid_spikes[43] | hid_spikes[54]) << 0
+        + (hid_spikes[14] | hid_spikes[18] | hid_spikes[23] | hid_spikes[43] | hid_spikes[51]) << 1
+        + (hid_spikes[18] | hid_spikes[22] | hid_spikes[26] | hid_spikes[43] | hid_spikes[51] | hid_spikes[54]) << 2
+        + (hid_spikes[14] | hid_spikes[26] | hid_spikes[43] | hid_spikes[51] | hid_spikes[54]) << 3
+        + (hid_spikes[18] | hid_spikes[22] | hid_spikes[26] | hid_spikes[43] | hid_spikes[51]) << 4
+        + (hid_spikes[18] | hid_spikes[23] | hid_spikes[43] | hid_spikes[51] | hid_spikes[54]) << 5
+        + (hid_spikes[14] | hid_spikes[43]) << 6
+        + (hid_spikes[6] | hid_spikes[31] | hid_spikes[32] | hid_spikes[70]) << 0
+        + (hid_spikes[4] | hid_spikes[6] | hid_spikes[42] | hid_spikes[46] | hid_spikes[62] | hid_spikes[70]) << 1
+        + (hid_spikes[31] | hid_spikes[62]) << 2
+        + (hid_spikes[4] | hid_spikes[6] | hid_spikes[31]) << 3
+        + (hid_spikes[4] | hid_spikes[31] | hid_spikes[32] | hid_spikes[46] | hid_spikes[62] | hid_spikes[70]) << 4
+        + (hid_spikes[6] | hid_spikes[42] | hid_spikes[62] | hid_spikes[70]) << 5
+        + (hid_spikes[4] | hid_spikes[32] | hid_spikes[62]) << 6;
     wire signed [11:0] sum_base_1 = pos_in_base_1 - neg_in_base_1;
     assign base_spikes[1] = (mem_base_1 >= 85);
     wire signed [11:0] next_base_1 = mem_base_1 - (mem_base_1 >>> 6) + sum_base_1;
 
     reg signed [11:0] mem_base_2;
-    wire signed [11:0] pos_in_base_2 = (hid_spikes[19] | hid_spikes[40] | hid_spikes[63]) << 0
-        + (hid_spikes[40] | hid_spikes[63] | hid_spikes[73]) << 1
-        + (hid_spikes[40] | hid_spikes[63]) << 2
-        + (hid_spikes[40]) << 3
-        + (hid_spikes[19] | hid_spikes[40]) << 4
-        + (hid_spikes[63] | hid_spikes[73]) << 5
+    wire signed [11:0] pos_in_base_2 = (hid_spikes[40] | hid_spikes[63] | hid_spikes[66] | hid_spikes[77]) << 0
+        + (hid_spikes[1] | hid_spikes[40] | hid_spikes[61] | hid_spikes[63] | hid_spikes[69] | hid_spikes[73]) << 1
+        + (hid_spikes[40] | hid_spikes[61] | hid_spikes[63] | hid_spikes[77]) << 2
+        + (hid_spikes[40] | hid_spikes[61] | hid_spikes[69]) << 3
+        + (hid_spikes[1] | hid_spikes[40] | hid_spikes[66] | hid_spikes[69] | hid_spikes[77]) << 4
+        + (hid_spikes[63] | hid_spikes[66] | hid_spikes[73] | hid_spikes[77]) << 5
         + (hid_spikes[73]) << 6
-        + (hid_spikes[65] | hid_spikes[66]) << 0
-        + (hid_spikes[20]) << 1
-        + (hid_spikes[49]) << 2
-        + (hid_spikes[20] | hid_spikes[49]) << 3
-        + (hid_spikes[20] | hid_spikes[65] | hid_spikes[66]) << 4
-        + (hid_spikes[66]) << 5
+        + (hid_spikes[13] | hid_spikes[19] | hid_spikes[51] | hid_spikes[52]) << 0
+        + (hid_spikes[8] | hid_spikes[52]) << 1
+        + (hid_spikes[8] | hid_spikes[46] | hid_spikes[49] | hid_spikes[51]) << 2
+        + (hid_spikes[13] | hid_spikes[46] | hid_spikes[49] | hid_spikes[51] | hid_spikes[52]) << 3
+        + (hid_spikes[13] | hid_spikes[19] | hid_spikes[27] | hid_spikes[46] | hid_spikes[52]) << 4
+        + (hid_spikes[8] | hid_spikes[27] | hid_spikes[52]) << 5
         + (hid_spikes[49]) << 6
-        + (hid_spikes[10]) << 0
-        + (hid_spikes[39]) << 1
-        + (hid_spikes[46]) << 2
-        + (hid_spikes[46]) << 3
-        + (hid_spikes[27] | hid_spikes[46]) << 4
-        + (hid_spikes[10] | hid_spikes[27]) << 5
+        + (hid_spikes[65] | hid_spikes[71]) << 0
+        + (hid_spikes[5] | hid_spikes[35] | hid_spikes[39] | hid_spikes[58] | hid_spikes[71]) << 1
+        + (hid_spikes[35] | hid_spikes[45] | hid_spikes[58] | hid_spikes[74]) << 2
+        + (hid_spikes[45] | hid_spikes[58] | hid_spikes[71] | hid_spikes[74]) << 3
+        + (hid_spikes[35] | hid_spikes[65] | hid_spikes[71] | hid_spikes[74]) << 4
+        + (hid_spikes[5] | hid_spikes[58] | hid_spikes[71]) << 5
         + (hid_spikes[39]) << 6
-        + (hid_spikes[44] | hid_spikes[67]) << 0
-        + (hid_spikes[18] | hid_spikes[44] | hid_spikes[69]) << 1
+        + (hid_spikes[10] | hid_spikes[31] | hid_spikes[44] | hid_spikes[53] | hid_spikes[64] | hid_spikes[67]) << 0
+        + (hid_spikes[18] | hid_spikes[20] | hid_spikes[31] | hid_spikes[44] | hid_spikes[64]) << 1
         + (hid_spikes[18] | hid_spikes[44]) << 2
-        + (hid_spikes[18] | hid_spikes[44] | hid_spikes[69]) << 3
-        + (hid_spikes[69]) << 4
-        + (hid_spikes[44]) << 5
-        + (hid_spikes[67]) << 6
-        + (hid_spikes[52]) << 0
-        + (hid_spikes[8] | hid_spikes[35] | hid_spikes[52] | hid_spikes[61]) << 1
-        + (hid_spikes[8] | hid_spikes[35] | hid_spikes[61]) << 2
-        + (hid_spikes[52] | hid_spikes[61]) << 3
-        + (hid_spikes[35] | hid_spikes[52]) << 4
-        + (hid_spikes[8] | hid_spikes[52]) << 5
-        + (hid_spikes[51] | hid_spikes[64] | hid_spikes[71]) << 0
-        + (hid_spikes[64] | hid_spikes[71]) << 1
-        + (hid_spikes[51] | hid_spikes[74]) << 2
-        + (hid_spikes[51] | hid_spikes[71] | hid_spikes[74]) << 3
-        + (hid_spikes[64] | hid_spikes[71] | hid_spikes[74]) << 4
-        + (hid_spikes[71]) << 5
-        + (hid_spikes[13] | hid_spikes[77]) << 0
-        + (hid_spikes[5]) << 1
-        + (hid_spikes[45] | hid_spikes[77]) << 2
-        + (hid_spikes[13] | hid_spikes[45]) << 3
-        + (hid_spikes[13] | hid_spikes[77]) << 4
-        + (hid_spikes[5] | hid_spikes[77]) << 5
-        + (hid_spikes[31] | hid_spikes[53]) << 0
-        + (hid_spikes[1] | hid_spikes[31] | hid_spikes[58]) << 1
-        + (hid_spikes[58]) << 2
-        + (hid_spikes[31] | hid_spikes[58]) << 3
-        + (hid_spikes[1] | hid_spikes[53]) << 4
-        + (hid_spikes[53] | hid_spikes[58]) << 5;
-    wire signed [11:0] neg_in_base_2 = (hid_spikes[22] | hid_spikes[34]) << 0
-        + (hid_spikes[12]) << 1
-        + (hid_spikes[12] | hid_spikes[22] | hid_spikes[34] | hid_spikes[42]) << 2
-        + (hid_spikes[12] | hid_spikes[22] | hid_spikes[42]) << 3
-        + (hid_spikes[12]) << 4
-        + (hid_spikes[22]) << 5
-        + (hid_spikes[34]) << 6
+        + (hid_spikes[18] | hid_spikes[20] | hid_spikes[31] | hid_spikes[44]) << 3
+        + (hid_spikes[20] | hid_spikes[53] | hid_spikes[64]) << 4
+        + (hid_spikes[10] | hid_spikes[44] | hid_spikes[53]) << 5
+        + (hid_spikes[67]) << 6;
+    wire signed [11:0] neg_in_base_2 = (hid_spikes[3] | hid_spikes[14] | hid_spikes[15] | hid_spikes[37] | hid_spikes[43]) << 0
+        + (hid_spikes[3] | hid_spikes[6] | hid_spikes[43]) << 1
+        + (hid_spikes[3] | hid_spikes[11] | hid_spikes[14] | hid_spikes[37] | hid_spikes[54]) << 2
+        + (hid_spikes[14] | hid_spikes[37] | hid_spikes[54]) << 3
+        + (hid_spikes[3] | hid_spikes[6] | hid_spikes[11] | hid_spikes[43]) << 4
+        + (hid_spikes[11] | hid_spikes[15] | hid_spikes[37] | hid_spikes[54]) << 5
+        + (hid_spikes[43] | hid_spikes[54]) << 6
         + (hid_spikes[0]) << 7
-        + (hid_spikes[17] | hid_spikes[62]) << 0
-        + (hid_spikes[17] | hid_spikes[21] | hid_spikes[62]) << 1
-        + (hid_spikes[21] | hid_spikes[47] | hid_spikes[62]) << 2
-        + (hid_spikes[21]) << 3
-        + (hid_spikes[17] | hid_spikes[62]) << 4
-        + (hid_spikes[62]) << 5
-        + (hid_spikes[47]) << 6
-        + (hid_spikes[4]) << 7
-        + (hid_spikes[3] | hid_spikes[25] | hid_spikes[72] | hid_spikes[76]) << 0
-        + (hid_spikes[3] | hid_spikes[25] | hid_spikes[76]) << 1
-        + (hid_spikes[3]) << 2
-        + (hid_spikes[72] | hid_spikes[76]) << 3
-        + (hid_spikes[3] | hid_spikes[72]) << 4
-        + (hid_spikes[25] | hid_spikes[72]) << 5
-        + (hid_spikes[30]) << 7
-        + (hid_spikes[15] | hid_spikes[37] | hid_spikes[78]) << 0
-        + (hid_spikes[60]) << 1
-        + (hid_spikes[37] | hid_spikes[60] | hid_spikes[78]) << 2
-        + (hid_spikes[37]) << 3
-        + (hid_spikes[60] | hid_spikes[78]) << 4
-        + (hid_spikes[15] | hid_spikes[37] | hid_spikes[78]) << 5
-        + (hid_spikes[78]) << 6
-        + (hid_spikes[24] | hid_spikes[79]) << 0
-        + (hid_spikes[6] | hid_spikes[24]) << 1
-        + (hid_spikes[24] | hid_spikes[54] | hid_spikes[79]) << 2
-        + (hid_spikes[24] | hid_spikes[54]) << 3
-        + (hid_spikes[6] | hid_spikes[24]) << 4
-        + (hid_spikes[54] | hid_spikes[79]) << 5
-        + (hid_spikes[54]) << 6
-        + (hid_spikes[28]) << 0
-        + (hid_spikes[28] | hid_spikes[33]) << 1
-        + (hid_spikes[28] | hid_spikes[56]) << 2
-        + (hid_spikes[16] | hid_spikes[28]) << 3
-        + (hid_spikes[16] | hid_spikes[33]) << 4
-        + (hid_spikes[28] | hid_spikes[56]) << 5
+        + (hid_spikes[24] | hid_spikes[28] | hid_spikes[72]) << 0
+        + (hid_spikes[24] | hid_spikes[28] | hid_spikes[33] | hid_spikes[60]) << 1
+        + (hid_spikes[24] | hid_spikes[28] | hid_spikes[42] | hid_spikes[56] | hid_spikes[60]) << 2
+        + (hid_spikes[24] | hid_spikes[28] | hid_spikes[41] | hid_spikes[42] | hid_spikes[72]) << 3
+        + (hid_spikes[24] | hid_spikes[33] | hid_spikes[60] | hid_spikes[72]) << 4
+        + (hid_spikes[28] | hid_spikes[41] | hid_spikes[56] | hid_spikes[72]) << 5
         + (hid_spikes[56]) << 6
-        + (hid_spikes[7] | hid_spikes[26]) << 0
-        + (hid_spikes[36] | hid_spikes[68]) << 1
-        + (hid_spikes[7] | hid_spikes[26] | hid_spikes[68]) << 2
-        + (hid_spikes[7] | hid_spikes[36]) << 3
-        + (hid_spikes[26] | hid_spikes[36] | hid_spikes[68]) << 4
-        + (hid_spikes[26]) << 5
-        + (hid_spikes[36]) << 6
-        + (hid_spikes[14] | hid_spikes[43]) << 0
-        + (hid_spikes[43]) << 1
-        + (hid_spikes[11] | hid_spikes[14]) << 2
-        + (hid_spikes[14] | hid_spikes[41]) << 3
-        + (hid_spikes[11] | hid_spikes[43]) << 4
-        + (hid_spikes[11] | hid_spikes[41]) << 5
-        + (hid_spikes[43]) << 6;
+        + (hid_spikes[4]) << 7
+        + (hid_spikes[26] | hid_spikes[34] | hid_spikes[76] | hid_spikes[79]) << 0
+        + (hid_spikes[12] | hid_spikes[21] | hid_spikes[36] | hid_spikes[68] | hid_spikes[76]) << 1
+        + (hid_spikes[12] | hid_spikes[21] | hid_spikes[26] | hid_spikes[34] | hid_spikes[68] | hid_spikes[79]) << 2
+        + (hid_spikes[12] | hid_spikes[21] | hid_spikes[36] | hid_spikes[76]) << 3
+        + (hid_spikes[12] | hid_spikes[26] | hid_spikes[36] | hid_spikes[68]) << 4
+        + (hid_spikes[26] | hid_spikes[79]) << 5
+        + (hid_spikes[34] | hid_spikes[36]) << 6
+        + (hid_spikes[30]) << 7
+        + (hid_spikes[7] | hid_spikes[17] | hid_spikes[22] | hid_spikes[25] | hid_spikes[62] | hid_spikes[78]) << 0
+        + (hid_spikes[17] | hid_spikes[25] | hid_spikes[62]) << 1
+        + (hid_spikes[7] | hid_spikes[22] | hid_spikes[47] | hid_spikes[62] | hid_spikes[78]) << 2
+        + (hid_spikes[7] | hid_spikes[16] | hid_spikes[22]) << 3
+        + (hid_spikes[16] | hid_spikes[17] | hid_spikes[62] | hid_spikes[78]) << 4
+        + (hid_spikes[22] | hid_spikes[25] | hid_spikes[62] | hid_spikes[78]) << 5
+        + (hid_spikes[47] | hid_spikes[78]) << 6;
     wire signed [11:0] sum_base_2 = pos_in_base_2 - neg_in_base_2;
     assign base_spikes[2] = (mem_base_2 >= 85);
     wire signed [11:0] next_base_2 = mem_base_2 - (mem_base_2 >>> 6) + sum_base_2;
 
     reg signed [11:0] mem_base_3;
-    wire signed [11:0] pos_in_base_3 = (hid_spikes[30] | hid_spikes[73]) << 0
-        + (hid_spikes[48] | hid_spikes[73]) << 1
-        + (hid_spikes[30] | hid_spikes[73]) << 2
-        + (hid_spikes[73]) << 3
-        + (hid_spikes[30] | hid_spikes[73]) << 4
-        + (hid_spikes[48] | hid_spikes[73]) << 5
-        + (hid_spikes[26] | hid_spikes[73]) << 6
-        + (hid_spikes[61] | hid_spikes[71]) << 0
-        + (hid_spikes[22]) << 1
-        + (hid_spikes[38] | hid_spikes[61]) << 2
-        + (hid_spikes[38] | hid_spikes[71]) << 3
-        + (hid_spikes[38] | hid_spikes[61]) << 4
-        + (hid_spikes[22] | hid_spikes[71]) << 5
-        + (hid_spikes[38]) << 6
-        + (hid_spikes[7] | hid_spikes[39]) << 0
-        + (hid_spikes[4] | hid_spikes[39] | hid_spikes[56]) << 1
-        + (hid_spikes[7]) << 2
-        + (hid_spikes[39] | hid_spikes[56]) << 3
-        + (hid_spikes[4] | hid_spikes[39] | hid_spikes[56]) << 4
-        + (hid_spikes[7]) << 5
-        + (hid_spikes[39]) << 6
-        + (hid_spikes[5] | hid_spikes[53]) << 0
-        + (hid_spikes[8] | hid_spikes[53] | hid_spikes[60]) << 1
-        + (hid_spikes[5] | hid_spikes[53] | hid_spikes[60]) << 2
-        + (hid_spikes[5] | hid_spikes[60]) << 3
-        + (hid_spikes[53] | hid_spikes[60]) << 4
-        + (hid_spikes[8]) << 5
-        + (hid_spikes[53]) << 6
-        + (hid_spikes[49] | hid_spikes[51]) << 0
-        + (hid_spikes[0]) << 1
-        + (hid_spikes[49] | hid_spikes[51]) << 2
-        + (hid_spikes[44] | hid_spikes[49] | hid_spikes[51]) << 3
-        + (hid_spikes[0] | hid_spikes[44]) << 4
-        + (hid_spikes[0]) << 5
-        + (hid_spikes[49]) << 6
-        + (hid_spikes[63]) << 0
-        + (hid_spikes[50]) << 1
-        + (hid_spikes[19] | hid_spikes[63]) << 2
-        + (hid_spikes[19] | hid_spikes[50]) << 3
-        + (hid_spikes[27]) << 4
-        + (hid_spikes[27] | hid_spikes[63]) << 5
-        + (hid_spikes[50]) << 6
-        + (hid_spikes[24]) << 0
-        + (hid_spikes[2] | hid_spikes[74]) << 1
-        + (hid_spikes[74]) << 2
-        + (hid_spikes[2] | hid_spikes[66] | hid_spikes[74]) << 3
-        + (hid_spikes[2]) << 4
-        + (hid_spikes[24] | hid_spikes[74]) << 5
-        + (hid_spikes[66]) << 6
-        + (hid_spikes[10] | hid_spikes[42]) << 0
-        + (hid_spikes[10] | hid_spikes[14] | hid_spikes[42]) << 1
-        + (hid_spikes[10] | hid_spikes[42]) << 2
-        + (hid_spikes[10]) << 3
-        + (hid_spikes[10]) << 4
-        + (hid_spikes[14]) << 5
-        + (hid_spikes[42]) << 6;
-    wire signed [11:0] neg_in_base_3 = (hid_spikes[9] | hid_spikes[57] | hid_spikes[70]) << 0
-        + (hid_spikes[68] | hid_spikes[70]) << 1
-        + (hid_spikes[57]) << 2
-        + (hid_spikes[70]) << 3
-        + (hid_spikes[9] | hid_spikes[70]) << 4
-        + (hid_spikes[9] | hid_spikes[57]) << 5
-        + (hid_spikes[68]) << 6
+    wire signed [11:0] pos_in_base_3 = (hid_spikes[5] | hid_spikes[10] | hid_spikes[71] | hid_spikes[73]) << 0
+        + (hid_spikes[10] | hid_spikes[14] | hid_spikes[73]) << 1
+        + (hid_spikes[5] | hid_spikes[10] | hid_spikes[73]) << 2
+        + (hid_spikes[5] | hid_spikes[10] | hid_spikes[44] | hid_spikes[66] | hid_spikes[71] | hid_spikes[73]) << 3
+        + (hid_spikes[10] | hid_spikes[44] | hid_spikes[73]) << 4
+        + (hid_spikes[14] | hid_spikes[71] | hid_spikes[73]) << 5
+        + (hid_spikes[26] | hid_spikes[66] | hid_spikes[73]) << 6
+        + (hid_spikes[7] | hid_spikes[30] | hid_spikes[49] | hid_spikes[51]) << 0
+        + (hid_spikes[0] | hid_spikes[22] | hid_spikes[60]) << 1
+        + (hid_spikes[7] | hid_spikes[30] | hid_spikes[38] | hid_spikes[49] | hid_spikes[51] | hid_spikes[60]) << 2
+        + (hid_spikes[38] | hid_spikes[49] | hid_spikes[51] | hid_spikes[60]) << 3
+        + (hid_spikes[0] | hid_spikes[30] | hid_spikes[38] | hid_spikes[60]) << 4
+        + (hid_spikes[0] | hid_spikes[7] | hid_spikes[22]) << 5
+        + (hid_spikes[38] | hid_spikes[49]) << 6
+        + (hid_spikes[39] | hid_spikes[42] | hid_spikes[61] | hid_spikes[63]) << 0
+        + (hid_spikes[2] | hid_spikes[39] | hid_spikes[42] | hid_spikes[48]) << 1
+        + (hid_spikes[19] | hid_spikes[42] | hid_spikes[61] | hid_spikes[63]) << 2
+        + (hid_spikes[2] | hid_spikes[19] | hid_spikes[39]) << 3
+        + (hid_spikes[2] | hid_spikes[27] | hid_spikes[39] | hid_spikes[61]) << 4
+        + (hid_spikes[27] | hid_spikes[48] | hid_spikes[63]) << 5
+        + (hid_spikes[39] | hid_spikes[42]) << 6
+        + (hid_spikes[24] | hid_spikes[53]) << 0
+        + (hid_spikes[4] | hid_spikes[8] | hid_spikes[50] | hid_spikes[53] | hid_spikes[56] | hid_spikes[74]) << 1
+        + (hid_spikes[53] | hid_spikes[74]) << 2
+        + (hid_spikes[50] | hid_spikes[56] | hid_spikes[74]) << 3
+        + (hid_spikes[4] | hid_spikes[53] | hid_spikes[56]) << 4
+        + (hid_spikes[8] | hid_spikes[24] | hid_spikes[74]) << 5
+        + (hid_spikes[50] | hid_spikes[53]) << 6;
+    wire signed [11:0] neg_in_base_3 = (hid_spikes[9] | hid_spikes[33] | hid_spikes[36] | hid_spikes[37] | hid_spikes[70] | hid_spikes[72]) << 0
+        + (hid_spikes[33] | hid_spikes[68] | hid_spikes[70]) << 1
+        + (hid_spikes[33] | hid_spikes[45] | hid_spikes[72]) << 2
+        + (hid_spikes[45] | hid_spikes[70] | hid_spikes[72]) << 3
+        + (hid_spikes[9] | hid_spikes[37] | hid_spikes[70] | hid_spikes[72]) << 4
+        + (hid_spikes[9] | hid_spikes[33] | hid_spikes[36]) << 5
+        + (hid_spikes[68] | hid_spikes[72]) << 6
         + (hid_spikes[11]) << 7
-        + (hid_spikes[16] | hid_spikes[47] | hid_spikes[55]) << 0
-        + (hid_spikes[16] | hid_spikes[55]) << 1
-        + (hid_spikes[55]) << 2
-        + (hid_spikes[16] | hid_spikes[55]) << 3
-        + (hid_spikes[16]) << 4
-        + (hid_spikes[55]) << 5
-        + (hid_spikes[47]) << 6
+        + (hid_spikes[21] | hid_spikes[43] | hid_spikes[59]) << 0
+        + (hid_spikes[21] | hid_spikes[35] | hid_spikes[40] | hid_spikes[59]) << 1
+        + (hid_spikes[35] | hid_spikes[40] | hid_spikes[43] | hid_spikes[59]) << 2
+        + (hid_spikes[21] | hid_spikes[43]) << 3
+        + (hid_spikes[21] | hid_spikes[32] | hid_spikes[35] | hid_spikes[40] | hid_spikes[43]) << 4
+        + (hid_spikes[40] | hid_spikes[59]) << 5
+        + (hid_spikes[1] | hid_spikes[21]) << 6
         + (hid_spikes[54]) << 7
-        + (hid_spikes[41] | hid_spikes[75]) << 0
-        + (hid_spikes[41] | hid_spikes[75]) << 1
-        + (hid_spikes[75]) << 2
-        + (hid_spikes[41]) << 3
-        + (hid_spikes[41] | hid_spikes[75]) << 4
-        + (hid_spikes[75]) << 5
-        + (hid_spikes[1]) << 6
+        + (hid_spikes[16] | hid_spikes[28] | hid_spikes[52] | hid_spikes[55] | hid_spikes[76]) << 0
+        + (hid_spikes[16] | hid_spikes[17] | hid_spikes[55] | hid_spikes[65] | hid_spikes[76]) << 1
+        + (hid_spikes[17] | hid_spikes[52] | hid_spikes[55] | hid_spikes[65] | hid_spikes[76]) << 2
+        + (hid_spikes[16] | hid_spikes[17] | hid_spikes[28] | hid_spikes[55]) << 3
+        + (hid_spikes[16] | hid_spikes[52] | hid_spikes[65]) << 4
+        + (hid_spikes[55] | hid_spikes[76]) << 5
+        + (hid_spikes[28] | hid_spikes[65]) << 6
         + (hid_spikes[64]) << 7
-        + (hid_spikes[36] | hid_spikes[43] | hid_spikes[76] | hid_spikes[78]) << 0
-        + (hid_spikes[76] | hid_spikes[78]) << 1
-        + (hid_spikes[43] | hid_spikes[76]) << 2
-        + (hid_spikes[43]) << 3
-        + (hid_spikes[43]) << 4
-        + (hid_spikes[36] | hid_spikes[76] | hid_spikes[78]) << 5
-        + (hid_spikes[78]) << 6
-        + (hid_spikes[33] | hid_spikes[72]) << 0
-        + (hid_spikes[33] | hid_spikes[35]) << 1
-        + (hid_spikes[33] | hid_spikes[35] | hid_spikes[72]) << 2
-        + (hid_spikes[72]) << 3
-        + (hid_spikes[32] | hid_spikes[35] | hid_spikes[72]) << 4
-        + (hid_spikes[33]) << 5
-        + (hid_spikes[72]) << 6
-        + (hid_spikes[21] | hid_spikes[52] | hid_spikes[59]) << 0
-        + (hid_spikes[17] | hid_spikes[21] | hid_spikes[59]) << 1
-        + (hid_spikes[17] | hid_spikes[52] | hid_spikes[59]) << 2
-        + (hid_spikes[17] | hid_spikes[21]) << 3
-        + (hid_spikes[21] | hid_spikes[52]) << 4
-        + (hid_spikes[59]) << 5
-        + (hid_spikes[21]) << 6
-        + (hid_spikes[58] | hid_spikes[77]) << 0
-        + (hid_spikes[65] | hid_spikes[77]) << 1
-        + (hid_spikes[6] | hid_spikes[58] | hid_spikes[65]) << 2
-        + (hid_spikes[58] | hid_spikes[77]) << 3
-        + (hid_spikes[6] | hid_spikes[65]) << 4
-        + (hid_spikes[77]) << 5
-        + (hid_spikes[65]) << 6
-        + (hid_spikes[28] | hid_spikes[37]) << 0
-        + (hid_spikes[40]) << 1
-        + (hid_spikes[40] | hid_spikes[45]) << 2
-        + (hid_spikes[28] | hid_spikes[45]) << 3
-        + (hid_spikes[37] | hid_spikes[40]) << 4
-        + (hid_spikes[40]) << 5
-        + (hid_spikes[28]) << 6;
+        + (hid_spikes[41] | hid_spikes[47] | hid_spikes[57] | hid_spikes[58] | hid_spikes[75] | hid_spikes[77] | hid_spikes[78]) << 0
+        + (hid_spikes[41] | hid_spikes[75] | hid_spikes[77] | hid_spikes[78]) << 1
+        + (hid_spikes[6] | hid_spikes[57] | hid_spikes[58] | hid_spikes[75]) << 2
+        + (hid_spikes[41] | hid_spikes[58] | hid_spikes[77]) << 3
+        + (hid_spikes[6] | hid_spikes[41] | hid_spikes[75]) << 4
+        + (hid_spikes[57] | hid_spikes[75] | hid_spikes[77] | hid_spikes[78]) << 5
+        + (hid_spikes[47] | hid_spikes[78]) << 6;
     wire signed [11:0] sum_base_3 = pos_in_base_3 - neg_in_base_3;
     assign base_spikes[3] = (mem_base_3 >= 85);
     wire signed [11:0] next_base_3 = mem_base_3 - (mem_base_3 >>> 6) + sum_base_3;
 
     reg signed [11:0] mem_base_4;
-    wire signed [11:0] pos_in_base_4 = (hid_spikes[28] | hid_spikes[56]) << 0
-        + (hid_spikes[28] | hid_spikes[56] | hid_spikes[60]) << 1
-        + (hid_spikes[56]) << 2
-        + (hid_spikes[28] | hid_spikes[60]) << 3
-        + (hid_spikes[23] | hid_spikes[28]) << 4
-        + (hid_spikes[56] | hid_spikes[60]) << 5
-        + (hid_spikes[28] | hid_spikes[57]) << 6
-        + (hid_spikes[35]) << 0
-        + (hid_spikes[0]) << 1
-        + (hid_spikes[0]) << 2
-        + (hid_spikes[64] | hid_spikes[74]) << 3
-        + (hid_spikes[0] | hid_spikes[35] | hid_spikes[62] | hid_spikes[64]) << 4
-        + (hid_spikes[35] | hid_spikes[74]) << 5
-        + (hid_spikes[0]) << 6
-        + (hid_spikes[2] | hid_spikes[50] | hid_spikes[59] | hid_spikes[68]) << 0
-        + (hid_spikes[2] | hid_spikes[50] | hid_spikes[68]) << 1
-        + (hid_spikes[2] | hid_spikes[50] | hid_spikes[59] | hid_spikes[68]) << 2
-        + (hid_spikes[2] | hid_spikes[50]) << 3
-        + (hid_spikes[41] | hid_spikes[50] | hid_spikes[59]) << 4
-        + (hid_spikes[50] | hid_spikes[68]) << 5
-        + (hid_spikes[41]) << 6
-        + (hid_spikes[4] | hid_spikes[6] | hid_spikes[20]) << 0
-        + (hid_spikes[4] | hid_spikes[8] | hid_spikes[20]) << 1
-        + (hid_spikes[6] | hid_spikes[20] | hid_spikes[71]) << 2
-        + (hid_spikes[6] | hid_spikes[8] | hid_spikes[20] | hid_spikes[71]) << 3
-        + (hid_spikes[6]) << 4
-        + (hid_spikes[4] | hid_spikes[8]) << 5
-        + (hid_spikes[20]) << 6
-        + (hid_spikes[29] | hid_spikes[65]) << 0
-        + (hid_spikes[29]) << 1
-        + (hid_spikes[33] | hid_spikes[43]) << 2
-        + (hid_spikes[43]) << 3
-        + (hid_spikes[29] | hid_spikes[33]) << 4
-        + (hid_spikes[29] | hid_spikes[65]) << 5
-        + (hid_spikes[43]) << 6
-        + (hid_spikes[10] | hid_spikes[37] | hid_spikes[39]) << 0
-        + (hid_spikes[37] | hid_spikes[39]) << 1
-        + (hid_spikes[53]) << 2
-        + (hid_spikes[10] | hid_spikes[53]) << 3
-        + (hid_spikes[10] | hid_spikes[37] | hid_spikes[39]) << 4
-        + (hid_spikes[37]) << 5
-        + (hid_spikes[53]) << 6
-        + (hid_spikes[18] | hid_spikes[70]) << 0
-        + (hid_spikes[26] | hid_spikes[70]) << 1
-        + (hid_spikes[26]) << 2
-        + (hid_spikes[26] | hid_spikes[45]) << 3
-        + (hid_spikes[26] | hid_spikes[45] | hid_spikes[70]) << 4
-        + (hid_spikes[26]) << 5
-        + (hid_spikes[18]) << 6
-        + (hid_spikes[7] | hid_spikes[66]) << 0
-        + (hid_spikes[7] | hid_spikes[17]) << 1
-        + (hid_spikes[7] | hid_spikes[40]) << 2
-        + (hid_spikes[40]) << 3
-        + (hid_spikes[17] | hid_spikes[40]) << 4
-        + (hid_spikes[7] | hid_spikes[17]) << 5
-        + (hid_spikes[66]) << 6;
-    wire signed [11:0] neg_in_base_4 = (hid_spikes[46] | hid_spikes[54]) << 0
-        + (hid_spikes[46] | hid_spikes[51] | hid_spikes[54]) << 1
-        + (hid_spikes[46] | hid_spikes[51] | hid_spikes[54]) << 2
-        + (hid_spikes[54]) << 3
-        + (hid_spikes[46]) << 4
-        + (hid_spikes[51]) << 5
-        + (hid_spikes[54]) << 6
+    wire signed [11:0] pos_in_base_4 = (hid_spikes[28] | hid_spikes[37] | hid_spikes[59] | hid_spikes[68]) << 0
+        + (hid_spikes[17] | hid_spikes[28] | hid_spikes[37] | hid_spikes[60] | hid_spikes[68]) << 1
+        + (hid_spikes[40] | hid_spikes[53] | hid_spikes[59] | hid_spikes[68]) << 2
+        + (hid_spikes[28] | hid_spikes[40] | hid_spikes[53] | hid_spikes[60]) << 3
+        + (hid_spikes[17] | hid_spikes[23] | hid_spikes[28] | hid_spikes[37] | hid_spikes[40] | hid_spikes[59]) << 4
+        + (hid_spikes[17] | hid_spikes[37] | hid_spikes[60] | hid_spikes[68]) << 5
+        + (hid_spikes[28] | hid_spikes[53]) << 6
+        + (hid_spikes[4] | hid_spikes[10] | hid_spikes[18] | hid_spikes[35] | hid_spikes[50]) << 0
+        + (hid_spikes[0] | hid_spikes[4] | hid_spikes[50]) << 1
+        + (hid_spikes[0] | hid_spikes[33] | hid_spikes[50]) << 2
+        + (hid_spikes[10] | hid_spikes[50] | hid_spikes[74]) << 3
+        + (hid_spikes[0] | hid_spikes[10] | hid_spikes[33] | hid_spikes[35] | hid_spikes[50] | hid_spikes[62]) << 4
+        + (hid_spikes[4] | hid_spikes[35] | hid_spikes[50] | hid_spikes[74]) << 5
+        + (hid_spikes[0] | hid_spikes[18]) << 6
+        + (hid_spikes[2] | hid_spikes[7] | hid_spikes[29] | hid_spikes[39] | hid_spikes[65] | hid_spikes[66]) << 0
+        + (hid_spikes[2] | hid_spikes[7] | hid_spikes[29] | hid_spikes[39]) << 1
+        + (hid_spikes[2] | hid_spikes[7] | hid_spikes[43]) << 2
+        + (hid_spikes[2] | hid_spikes[43] | hid_spikes[45]) << 3
+        + (hid_spikes[29] | hid_spikes[39] | hid_spikes[41] | hid_spikes[45]) << 4
+        + (hid_spikes[7] | hid_spikes[29] | hid_spikes[65]) << 5
+        + (hid_spikes[41] | hid_spikes[43] | hid_spikes[66]) << 6
+        + (hid_spikes[6] | hid_spikes[20] | hid_spikes[56] | hid_spikes[70]) << 0
+        + (hid_spikes[8] | hid_spikes[20] | hid_spikes[26] | hid_spikes[56] | hid_spikes[70]) << 1
+        + (hid_spikes[6] | hid_spikes[20] | hid_spikes[26] | hid_spikes[56] | hid_spikes[71]) << 2
+        + (hid_spikes[6] | hid_spikes[8] | hid_spikes[20] | hid_spikes[26] | hid_spikes[64] | hid_spikes[71]) << 3
+        + (hid_spikes[6] | hid_spikes[26] | hid_spikes[64] | hid_spikes[70]) << 4
+        + (hid_spikes[8] | hid_spikes[26] | hid_spikes[56]) << 5
+        + (hid_spikes[20] | hid_spikes[57]) << 6;
+    wire signed [11:0] neg_in_base_4 = (hid_spikes[1] | hid_spikes[31] | hid_spikes[32] | hid_spikes[46] | hid_spikes[58]) << 0
+        + (hid_spikes[15] | hid_spikes[31] | hid_spikes[32] | hid_spikes[34] | hid_spikes[46]) << 1
+        + (hid_spikes[1] | hid_spikes[31] | hid_spikes[32] | hid_spikes[34] | hid_spikes[46]) << 2
+        + (hid_spikes[32] | hid_spikes[34]) << 3
+        + (hid_spikes[1] | hid_spikes[46]) << 4
+        + (hid_spikes[15] | hid_spikes[31] | hid_spikes[58]) << 5
+        + (hid_spikes[1] | hid_spikes[15] | hid_spikes[34]) << 6
         + (hid_spikes[11]) << 7
-        + (hid_spikes[31] | hid_spikes[47]) << 0
-        + (hid_spikes[31] | hid_spikes[34] | hid_spikes[47]) << 1
-        + (hid_spikes[31] | hid_spikes[34] | hid_spikes[47]) << 2
-        + (hid_spikes[34]) << 3
-        + (hid_spikes[47]) << 4
-        + (hid_spikes[31]) << 5
-        + (hid_spikes[34]) << 6
+        + (hid_spikes[14] | hid_spikes[47] | hid_spikes[63]) << 0
+        + (hid_spikes[14] | hid_spikes[21] | hid_spikes[47] | hid_spikes[51]) << 1
+        + (hid_spikes[14] | hid_spikes[21] | hid_spikes[30] | hid_spikes[47] | hid_spikes[51] | hid_spikes[63]) << 2
+        + (hid_spikes[14] | hid_spikes[63]) << 3
+        + (hid_spikes[14] | hid_spikes[30] | hid_spikes[47]) << 4
+        + (hid_spikes[30] | hid_spikes[48] | hid_spikes[51]) << 5
+        + (hid_spikes[14] | hid_spikes[21]) << 6
         + (hid_spikes[78]) << 7
-        + (hid_spikes[19] | hid_spikes[58]) << 0
-        + (hid_spikes[19] | hid_spikes[21]) << 1
-        + (hid_spikes[21]) << 2
-        + (hid_spikes[19]) << 3
-        + (hid_spikes[67]) << 4
-        + (hid_spikes[19] | hid_spikes[58]) << 5
-        + (hid_spikes[19] | hid_spikes[21]) << 6
-        + (hid_spikes[73]) << 0
-        + (hid_spikes[25]) << 1
-        + (hid_spikes[25] | hid_spikes[55]) << 2
-        + (hid_spikes[55]) << 3
-        + (hid_spikes[55]) << 4
-        + (hid_spikes[25] | hid_spikes[48]) << 5
-        + (hid_spikes[25] | hid_spikes[73]) << 6
-        + (hid_spikes[32] | hid_spikes[69]) << 0
-        + (hid_spikes[15] | hid_spikes[32]) << 1
-        + (hid_spikes[32] | hid_spikes[79]) << 2
-        + (hid_spikes[32] | hid_spikes[69]) << 3
-        + (hid_spikes[69]) << 4
-        + (hid_spikes[15] | hid_spikes[69] | hid_spikes[79]) << 5
-        + (hid_spikes[15]) << 6
-        + (hid_spikes[14] | hid_spikes[27] | hid_spikes[63]) << 0
-        + (hid_spikes[14] | hid_spikes[27]) << 1
-        + (hid_spikes[14] | hid_spikes[27] | hid_spikes[63]) << 2
-        + (hid_spikes[14] | hid_spikes[27] | hid_spikes[63] | hid_spikes[72]) << 3
-        + (hid_spikes[14]) << 4
-        + (hid_spikes[72]) << 5
-        + (hid_spikes[14]) << 6
-        + (hid_spikes[61] | hid_spikes[76]) << 0
-        + (hid_spikes[36] | hid_spikes[61]) << 1
-        + (hid_spikes[30] | hid_spikes[76]) << 2
-        + (hid_spikes[36] | hid_spikes[76]) << 3
-        + (hid_spikes[30] | hid_spikes[36]) << 4
-        + (hid_spikes[30] | hid_spikes[61]) << 5
-        + (hid_spikes[36]) << 6
-        + (hid_spikes[1] | hid_spikes[22] | hid_spikes[75]) << 0
-        + (hid_spikes[22]) << 1
-        + (hid_spikes[1]) << 2
-        + (hid_spikes[22] | hid_spikes[75]) << 3
-        + (hid_spikes[1] | hid_spikes[22]) << 4
-        + (hid_spikes[75]) << 5
-        + (hid_spikes[1]) << 6;
+        + (hid_spikes[19] | hid_spikes[54] | hid_spikes[69] | hid_spikes[75] | hid_spikes[76]) << 0
+        + (hid_spikes[19] | hid_spikes[54]) << 1
+        + (hid_spikes[54] | hid_spikes[55] | hid_spikes[76] | hid_spikes[79]) << 2
+        + (hid_spikes[19] | hid_spikes[54] | hid_spikes[55] | hid_spikes[69] | hid_spikes[75] | hid_spikes[76]) << 3
+        + (hid_spikes[55] | hid_spikes[67] | hid_spikes[69]) << 4
+        + (hid_spikes[19] | hid_spikes[69] | hid_spikes[75] | hid_spikes[79]) << 5
+        + (hid_spikes[19] | hid_spikes[54]) << 6
+        + (hid_spikes[22] | hid_spikes[27] | hid_spikes[61] | hid_spikes[73]) << 0
+        + (hid_spikes[22] | hid_spikes[25] | hid_spikes[27] | hid_spikes[36] | hid_spikes[61]) << 1
+        + (hid_spikes[25] | hid_spikes[27]) << 2
+        + (hid_spikes[22] | hid_spikes[27] | hid_spikes[36] | hid_spikes[72]) << 3
+        + (hid_spikes[22] | hid_spikes[36]) << 4
+        + (hid_spikes[25] | hid_spikes[61] | hid_spikes[72]) << 5
+        + (hid_spikes[25] | hid_spikes[36] | hid_spikes[73]) << 6;
     wire signed [11:0] sum_base_4 = pos_in_base_4 - neg_in_base_4;
     assign base_spikes[4] = (mem_base_4 >= 85);
     wire signed [11:0] next_base_4 = mem_base_4 - (mem_base_4 >>> 6) + sum_base_4;
 
     reg signed [11:0] mem_base_5;
-    wire signed [11:0] pos_in_base_5 = (hid_spikes[0] | hid_spikes[4]) << 0
-        + (hid_spikes[0] | hid_spikes[4] | hid_spikes[47]) << 1
-        + (hid_spikes[4] | hid_spikes[34] | hid_spikes[47]) << 2
-        + (hid_spikes[4] | hid_spikes[34] | hid_spikes[47]) << 3
-        + (hid_spikes[0] | hid_spikes[34]) << 4
-        + (hid_spikes[4] | hid_spikes[20]) << 5
-        + (hid_spikes[20]) << 6
-        + (hid_spikes[30] | hid_spikes[54]) << 0
-        + (hid_spikes[23] | hid_spikes[30] | hid_spikes[54] | hid_spikes[61] | hid_spikes[67]) << 1
-        + (hid_spikes[30] | hid_spikes[61] | hid_spikes[67]) << 2
-        + (hid_spikes[54] | hid_spikes[61] | hid_spikes[67]) << 3
-        + (hid_spikes[23] | hid_spikes[30] | hid_spikes[67]) << 4
-        + (hid_spikes[54]) << 5
+    wire signed [11:0] pos_in_base_5 = (hid_spikes[0] | hid_spikes[24] | hid_spikes[50] | hid_spikes[71]) << 0
+        + (hid_spikes[0] | hid_spikes[6] | hid_spikes[22] | hid_spikes[47] | hid_spikes[50] | hid_spikes[71]) << 1
+        + (hid_spikes[6] | hid_spikes[34] | hid_spikes[47] | hid_spikes[50] | hid_spikes[71]) << 2
+        + (hid_spikes[22] | hid_spikes[24] | hid_spikes[34] | hid_spikes[47] | hid_spikes[71]) << 3
+        + (hid_spikes[0] | hid_spikes[6] | hid_spikes[34] | hid_spikes[50]) << 4
+        + (hid_spikes[6] | hid_spikes[20] | hid_spikes[24]) << 5
+        + (hid_spikes[20] | hid_spikes[22]) << 6
+        + (hid_spikes[4] | hid_spikes[5] | hid_spikes[9]) << 0
+        + (hid_spikes[4] | hid_spikes[5] | hid_spikes[23] | hid_spikes[28] | hid_spikes[40] | hid_spikes[61] | hid_spikes[67]) << 1
+        + (hid_spikes[4] | hid_spikes[9] | hid_spikes[28] | hid_spikes[40] | hid_spikes[61] | hid_spikes[67]) << 2
+        + (hid_spikes[4] | hid_spikes[28] | hid_spikes[43] | hid_spikes[61] | hid_spikes[67]) << 3
+        + (hid_spikes[9] | hid_spikes[23] | hid_spikes[40] | hid_spikes[43] | hid_spikes[67]) << 4
+        + (hid_spikes[4] | hid_spikes[5] | hid_spikes[40]) << 5
         + (hid_spikes[67]) << 6
-        + (hid_spikes[13] | hid_spikes[46] | hid_spikes[78]) << 0
-        + (hid_spikes[37] | hid_spikes[46] | hid_spikes[73]) << 1
-        + (hid_spikes[46] | hid_spikes[73] | hid_spikes[78]) << 2
-        + (hid_spikes[13] | hid_spikes[78]) << 3
-        + (hid_spikes[13] | hid_spikes[37] | hid_spikes[46]) << 4
-        + (hid_spikes[73]) << 5
+        + (hid_spikes[12] | hid_spikes[13] | hid_spikes[30] | hid_spikes[62] | hid_spikes[78]) << 0
+        + (hid_spikes[12] | hid_spikes[30] | hid_spikes[32] | hid_spikes[37] | hid_spikes[62] | hid_spikes[73]) << 1
+        + (hid_spikes[12] | hid_spikes[15] | hid_spikes[30] | hid_spikes[32] | hid_spikes[62] | hid_spikes[73] | hid_spikes[78]) << 2
+        + (hid_spikes[12] | hid_spikes[13] | hid_spikes[32] | hid_spikes[78]) << 3
+        + (hid_spikes[12] | hid_spikes[13] | hid_spikes[15] | hid_spikes[30] | hid_spikes[37] | hid_spikes[62]) << 4
+        + (hid_spikes[62] | hid_spikes[73]) << 5
         + (hid_spikes[13]) << 6
-        + (hid_spikes[24] | hid_spikes[50] | hid_spikes[51]) << 0
-        + (hid_spikes[39] | hid_spikes[50] | hid_spikes[51]) << 1
-        + (hid_spikes[50] | hid_spikes[51]) << 2
-        + (hid_spikes[24]) << 3
-        + (hid_spikes[39] | hid_spikes[50] | hid_spikes[51]) << 4
-        + (hid_spikes[24]) << 5
-        + (hid_spikes[51]) << 6
-        + (hid_spikes[2] | hid_spikes[9] | hid_spikes[71]) << 0
-        + (hid_spikes[22] | hid_spikes[71]) << 1
-        + (hid_spikes[2] | hid_spikes[9] | hid_spikes[71]) << 2
-        + (hid_spikes[22] | hid_spikes[71]) << 3
-        + (hid_spikes[2] | hid_spikes[9]) << 4
-        + (hid_spikes[2]) << 5
-        + (hid_spikes[22]) << 6
-        + (hid_spikes[57] | hid_spikes[62]) << 0
-        + (hid_spikes[28] | hid_spikes[62]) << 1
-        + (hid_spikes[15] | hid_spikes[28] | hid_spikes[57] | hid_spikes[62]) << 2
-        + (hid_spikes[28] | hid_spikes[57]) << 3
-        + (hid_spikes[15] | hid_spikes[57] | hid_spikes[62]) << 4
-        + (hid_spikes[62]) << 5
-        + (hid_spikes[5]) << 0
-        + (hid_spikes[5] | hid_spikes[6] | hid_spikes[32]) << 1
-        + (hid_spikes[6] | hid_spikes[32]) << 2
-        + (hid_spikes[32] | hid_spikes[43]) << 3
-        + (hid_spikes[6] | hid_spikes[43]) << 4
-        + (hid_spikes[5] | hid_spikes[6]) << 5
-        + (hid_spikes[12]) << 0
-        + (hid_spikes[12] | hid_spikes[40] | hid_spikes[45]) << 1
-        + (hid_spikes[12] | hid_spikes[38] | hid_spikes[40] | hid_spikes[45]) << 2
-        + (hid_spikes[12] | hid_spikes[45]) << 3
-        + (hid_spikes[12] | hid_spikes[38] | hid_spikes[40]) << 4
-        + (hid_spikes[40]) << 5;
-    wire signed [11:0] neg_in_base_5 = (hid_spikes[11]) << 0
-        + (hid_spikes[16]) << 1
-        + (hid_spikes[16]) << 2
-        + (hid_spikes[16]) << 3
-        + (hid_spikes[11] | hid_spikes[16]) << 4
-        + (hid_spikes[16] | hid_spikes[70]) << 5
-        + (hid_spikes[18]) << 7
-        + (hid_spikes[26] | hid_spikes[53]) << 0
-        + (hid_spikes[68]) << 1
-        + (hid_spikes[26] | hid_spikes[53]) << 2
-        + (hid_spikes[26] | hid_spikes[53] | hid_spikes[68]) << 3
-        + (hid_spikes[26] | hid_spikes[68]) << 4
-        + (hid_spikes[26]) << 5
-        + (hid_spikes[75]) << 7
-        + (hid_spikes[19] | hid_spikes[25]) << 0
-        + (hid_spikes[25]) << 1
-        + (hid_spikes[74]) << 2
-        + (hid_spikes[74]) << 3
-        + (hid_spikes[25] | hid_spikes[74]) << 4
-        + (hid_spikes[19] | hid_spikes[74]) << 5
-        + (hid_spikes[74]) << 6
-        + (hid_spikes[49]) << 0
-        + (hid_spikes[49] | hid_spikes[60]) << 1
-        + (hid_spikes[42] | hid_spikes[49]) << 2
-        + (hid_spikes[49] | hid_spikes[60]) << 3
-        + (hid_spikes[60]) << 4
-        + (hid_spikes[33] | hid_spikes[42] | hid_spikes[60]) << 5
-        + (hid_spikes[33]) << 6
-        + (hid_spikes[36] | hid_spikes[52] | hid_spikes[79]) << 0
-        + (hid_spikes[79]) << 1
-        + (hid_spikes[36] | hid_spikes[52]) << 2
-        + (hid_spikes[36] | hid_spikes[52] | hid_spikes[79]) << 3
-        + (hid_spikes[52]) << 4
-        + (hid_spikes[36]) << 5
+        + (hid_spikes[2] | hid_spikes[46] | hid_spikes[51] | hid_spikes[54] | hid_spikes[57]) << 0
+        + (hid_spikes[39] | hid_spikes[45] | hid_spikes[46] | hid_spikes[51] | hid_spikes[54]) << 1
+        + (hid_spikes[2] | hid_spikes[38] | hid_spikes[45] | hid_spikes[46] | hid_spikes[51] | hid_spikes[57]) << 2
+        + (hid_spikes[45] | hid_spikes[54] | hid_spikes[57]) << 3
+        + (hid_spikes[2] | hid_spikes[38] | hid_spikes[39] | hid_spikes[46] | hid_spikes[51] | hid_spikes[57]) << 4
+        + (hid_spikes[2] | hid_spikes[54]) << 5
+        + (hid_spikes[51]) << 6;
+    wire signed [11:0] neg_in_base_5 = (hid_spikes[19] | hid_spikes[26] | hid_spikes[36] | hid_spikes[79]) << 0
+        + (hid_spikes[68] | hid_spikes[79]) << 1
+        + (hid_spikes[26] | hid_spikes[36]) << 2
+        + (hid_spikes[26] | hid_spikes[36] | hid_spikes[68] | hid_spikes[79]) << 3
+        + (hid_spikes[26] | hid_spikes[63] | hid_spikes[68]) << 4
+        + (hid_spikes[19] | hid_spikes[26] | hid_spikes[36]) << 5
         + (hid_spikes[79]) << 6
-        + (hid_spikes[1] | hid_spikes[64] | hid_spikes[76]) << 0
-        + (hid_spikes[64]) << 1
-        + (hid_spikes[1] | hid_spikes[64] | hid_spikes[69]) << 2
-        + (hid_spikes[64] | hid_spikes[69] | hid_spikes[76]) << 3
-        + (hid_spikes[69]) << 4
-        + (hid_spikes[1]) << 5
+        + (hid_spikes[18]) << 7
+        + (hid_spikes[1] | hid_spikes[49] | hid_spikes[76]) << 0
+        + (hid_spikes[16] | hid_spikes[49]) << 1
+        + (hid_spikes[1] | hid_spikes[16] | hid_spikes[17] | hid_spikes[49]) << 2
+        + (hid_spikes[16] | hid_spikes[49] | hid_spikes[76]) << 3
+        + (hid_spikes[16] | hid_spikes[17]) << 4
+        + (hid_spikes[1] | hid_spikes[16] | hid_spikes[70]) << 5
         + (hid_spikes[76]) << 6
-        + (hid_spikes[3]) << 0
-        + (hid_spikes[3]) << 1
-        + (hid_spikes[17]) << 2
-        + (hid_spikes[58]) << 3
-        + (hid_spikes[3] | hid_spikes[17]) << 4
-        + (hid_spikes[3]) << 5
-        + (hid_spikes[58]) << 6
-        + (hid_spikes[66]) << 0
+        + (hid_spikes[75]) << 7
+        + (hid_spikes[3] | hid_spikes[25] | hid_spikes[52] | hid_spikes[64]) << 0
+        + (hid_spikes[3] | hid_spikes[25] | hid_spikes[60] | hid_spikes[64]) << 1
+        + (hid_spikes[42] | hid_spikes[52] | hid_spikes[64] | hid_spikes[74]) << 2
+        + (hid_spikes[52] | hid_spikes[60] | hid_spikes[64] | hid_spikes[74]) << 3
+        + (hid_spikes[3] | hid_spikes[25] | hid_spikes[52] | hid_spikes[60] | hid_spikes[74]) << 4
+        + (hid_spikes[3] | hid_spikes[42] | hid_spikes[60] | hid_spikes[74]) << 5
+        + (hid_spikes[74]) << 6
+        + (hid_spikes[11] | hid_spikes[53] | hid_spikes[66]) << 0
         + (hid_spikes[55]) << 1
-        + (hid_spikes[66]) << 2
-        + (hid_spikes[55]) << 3
-        + (hid_spikes[55] | hid_spikes[63]) << 4
-        + (hid_spikes[55]) << 5
-        + (hid_spikes[66]) << 6;
+        + (hid_spikes[53] | hid_spikes[66] | hid_spikes[69]) << 2
+        + (hid_spikes[53] | hid_spikes[55] | hid_spikes[58] | hid_spikes[69]) << 3
+        + (hid_spikes[11] | hid_spikes[55] | hid_spikes[69]) << 4
+        + (hid_spikes[33] | hid_spikes[55]) << 5
+        + (hid_spikes[33] | hid_spikes[58] | hid_spikes[66]) << 6;
     wire signed [11:0] sum_base_5 = pos_in_base_5 - neg_in_base_5;
     assign base_spikes[5] = (mem_base_5 >= 85);
     wire signed [11:0] next_base_5 = mem_base_5 - (mem_base_5 >>> 6) + sum_base_5;

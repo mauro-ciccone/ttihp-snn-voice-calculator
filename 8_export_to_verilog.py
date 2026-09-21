@@ -12,7 +12,7 @@ def get_array(val, expected_len):
 def main():
     print("=== Phase 8: ASIC Verilog Compiler (NO WTA - BASE SPIKE EXPORT) ===")
     
-    base_model = torch.load(os.path.join(TARGET_FOLDER, "pure_integer_model.pt"), map_location="cpu")
+    base_model = torch.load(os.path.join(TARGET_FOLDER, "working_4or_output.pt"), map_location="cpu")
     
     w_in_int = base_model["w_in_int"].numpy()     
     w_rec_int = base_model["w_rec_int"].numpy()   

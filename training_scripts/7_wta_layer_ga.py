@@ -197,7 +197,7 @@ def main():
     pop_beta_idx = torch.randint(60, 65, (POP_SIZE, NUM_KEYWORDS), device=device)
     
     # --- INJECT GOLDEN SYMMETRIC SEED ---
-    seed_count = int(POP_SIZE * 0.50)
+    seed_count = int(POP_SIZE * 0.80)
     
     ideal_w_in = torch.full((NUM_KEYWORDS, NUM_KEYWORDS), -1.0, device=device)
     ideal_w_in.fill_diagonal_(6.0) 

@@ -10,9 +10,6 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
 TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-GENERATIONS = 0 
-POP_SIZE = 10
-MUTATION_RATE = 0.05
 
 class PureIntegerHardwareNet(nn.Module):
     def __init__(self, config, device):
@@ -22,7 +19,7 @@ class PureIntegerHardwareNet(nn.Module):
         self.num_inputs = config["num_inputs"]
         self.num_outputs = config["num_outputs"]
 
-        manifest_path = os.path.join(TARGET_FOLDER, "pure_integer_model.pt")
+        manifest_path = os.path.join(TARGET_FOLDER, "working_4or_output.pt")
         if not os.path.exists(manifest_path):
             raise FileNotFoundError(f"Missing {manifest_path}. Export from Phase 5 first.")
             
@@ -32,7 +29,7 @@ class PureIntegerHardwareNet(nn.Module):
         self.delta_out = manifest["delta_out"]
         self.g_in = manifest.get("g_in", 2)
         self.g_rec = manifest.get("g_rec", 1)
-        self.g_out = manifest.get("g_out", 4)
+        self.g_out = manifest.get("g_out", 1) # Dynamically loaded Output OR-gates
         
         self.w_in_int = nn.Parameter(manifest["w_in_int"], requires_grad=False)
         self.w_rec_int = nn.Parameter(manifest["w_rec_int"], requires_grad=False)
@@ -99,6 +96,7 @@ class PureIntegerHardwareNet(nn.Module):
             x_batched = x[:, step, :].unsqueeze(0) 
             spk_batched = spk_hid.unsqueeze(0)     
             
+            # Hidden Layer Math (OR-Gate Simulation)
             pos_counts_in = torch.matmul(x_batched, self.pos_bit_mats_in)
             neg_counts_in = torch.matmul(x_batched, self.neg_bit_mats_in)
             pos_int_in = ((pos_counts_in > 0).int().view(self.g_in, 8, batch, self.num_hidden) * self.bit_shifts).sum(dim=(0, 1))
@@ -121,6 +119,7 @@ class PureIntegerHardwareNet(nn.Module):
             mem_hid = mem_hid * (1.0 - spk_hid) 
             spk_hid_rec.append(spk_hid)
             
+            # Base Output Layer (OR-Gate Simulation)
             pos_counts_out = torch.matmul(spk_batched, self.pos_bit_mats_out)
             neg_counts_out = torch.matmul(spk_batched, self.neg_bit_mats_out)
             pos_int_out = ((pos_counts_out > 0).int().view(self.g_out, 8, batch, self.num_outputs) * self.bit_shifts).sum(dim=(0, 1))
@@ -140,23 +139,10 @@ class PureIntegerHardwareNet(nn.Module):
             
         return torch.stack(spk_out_rec, dim=1), torch.stack(spk_hid_rec, dim=1)
 
-def evaluate_fitness(model, x, y, idx_silence):
-    with torch.no_grad():
-        spk_out, _ = model(x)
-        spike_counts = spk_out.sum(dim=1)
-        max_spikes, raw_preds = spike_counts.max(dim=1)
-        preds = torch.where(max_spikes < 10, torch.tensor(idx_silence, device=model.device), raw_preds)
-        
-        correct = (preds == y).sum().item()
-        sorted_spikes, _ = torch.sort(spike_counts, dim=1, descending=True)
-        margin_diffs = (sorted_spikes[:, 0] - sorted_spikes[:, 1]).sum().item()
-        
-        return correct, margin_diffs
-
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
     model.eval()
     val_correct, val_total = 0, 0
-    all_preds, all_targets, all_spikes, all_spk_out_time = [], [], [], []
+    all_preds, all_targets, all_spikes = [], [], []
     all_in_spikes, all_hidden_spikes = [], []
     
     with torch.no_grad():
@@ -176,15 +162,13 @@ def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
             all_spikes.append(spike_counts.cpu())
             all_in_spikes.append(x.sum(dim=1).cpu())
             all_hidden_spikes.append(spk_hidden.sum(dim=1).cpu())
-            all_spk_out_time.append(spk_out.cpu())
             
     spike_counts = torch.cat(all_spikes, dim=0)
     input_counts = torch.cat(all_in_spikes, dim=0)
     hidden_counts = torch.cat(all_hidden_spikes, dim=0)
-    spk_out_tensor = torch.cat(all_spk_out_time, dim=0)
     acc = (val_correct / val_total) * 100 if val_total > 0 else 0.0
     
-    return acc, all_preds, all_targets, spike_counts, input_counts, hidden_counts, spk_out_tensor
+    return acc, all_preds, all_targets, spike_counts, input_counts, hidden_counts
 
 def main():
     device = torch.device("cpu")
@@ -193,7 +177,7 @@ def main():
     
     print("\n=== Phase 6: TRUE OR-GATE HARDWARE VERIFIER ===")
     
-    train_loader, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
+    _, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
     idx_noise = labels_map.get("noise", 6)
     idx_silence = labels_map.get("silence", 7)
     inv_labels = {v: k for k, v in labels_map.items()}
@@ -206,11 +190,37 @@ def main():
     print(f"        Output Gates Allocated: G_OUT = {champion.g_out}")
     print("===========================================================\n")
     
-    final_test_acc, preds, targets, spike_counts, input_counts, hidden_counts, spk_out_tensor = run_evaluation(champion, test_loader, device, idx_noise, idx_silence)
+    final_test_acc, preds, targets, spike_counts, input_counts, hidden_counts = run_evaluation(champion, test_loader, device, idx_noise, idx_silence)
     
     target_tensor_arr = torch.tensor(targets)
     pred_tensor_arr = torch.tensor(preds)
     
+    print("\n--- Average Input Spikes per Target Class ---")
+    num_inputs = config["num_inputs"]
+    header_in = f"{'Target Class':<13} | " + " | ".join([f"Ch{i:<4}" for i in range(num_inputs)]) + " || TOTAL"
+    print(header_in)
+    print("-" * len(header_in))
+    for i in range(len(inv_labels)): 
+        class_mask = target_tensor_arr == i
+        if class_mask.sum() > 0:
+            mean_in = input_counts[class_mask].float().mean(dim=0)
+            total_in = mean_in.sum().item()
+            row = f"{inv_labels[i]:<13} | " + " | ".join([f"{val:>6.1f}" for val in mean_in]) + f" || {total_in:>6.1f}"
+            print(row)
+
+    print("\n--- Average Hidden Spikes per Target Class ---")
+    header_hid = f"{'Target Class':<13} | {'Total Layer':>11} | {'Avg/Neuron':>10} | {'Max Neuron':>10}"
+    print(header_hid)
+    print("-" * len(header_hid))
+    for i in range(len(inv_labels)): 
+        class_mask = target_tensor_arr == i
+        if class_mask.sum() > 0:
+            mean_hid = hidden_counts[class_mask].float().mean(dim=0)
+            total_hid = mean_hid.sum().item()
+            avg_per_n = mean_hid.mean().item()
+            max_n = mean_hid.max().item()
+            print(f"{inv_labels[i]:<13} | {total_hid:>11.1f} | {avg_per_n:>10.1f} | {max_n:>10.1f}")
+
     print("\n--- Average Output Spikes per Target Class ---")
     header_spikes = f"{'Target Class':<13} | " + " | ".join([f"{inv_labels[i]:>6}" for i in range(num_classes)])
     print(header_spikes)
@@ -225,9 +235,19 @@ def main():
     total_spikes_per_neuron = hidden_counts.sum(dim=0)
     avg_spikes_per_neuron = hidden_counts.mean(dim=0)
     dead_neurons = (total_spikes_per_neuron == 0).nonzero(as_tuple=True)[0].tolist()
+    hyper_neurons = (avg_spikes_per_neuron > 40).nonzero(as_tuple=True)[0].tolist()
+    
+    max_in_w = champion.w_in_int.data.abs().max(dim=1)[0]
+    severed_in = (max_in_w == 0).nonzero(as_tuple=True)[0].tolist()
+    max_out_w = champion.w_out_int.data.abs().max(dim=0)[0]
+    weak_out = (max_out_w < 5).nonzero(as_tuple=True)[0].tolist() 
+    max_rec_w = champion.w_rec_int.data.abs().max(dim=1)[0]
+    severed_rec = (max_rec_w == 0).nonzero(as_tuple=True)[0].tolist()
     
     print(f"Total Hidden Neurons: {config['num_hidden']}")
     print(f"Dead Neurons (0 spikes)         : {len(dead_neurons):>3}  {dead_neurons if dead_neurons else ''}")
+    print(f"Severed Inputs (Max In W == 0)  : {len(severed_in):>3}  {severed_in if severed_in else ''}")
+    print(f"Severed Recurrents (Max Rec W==0): {len(severed_rec):>3}  {severed_rec if severed_rec else ''}")
 
     print("\n--- Hardware Precision Matrix (%) ---")
     keyword_idx = [i for i in range(num_classes) if i not in (idx_noise, idx_silence)]
@@ -251,38 +271,28 @@ def main():
                 row_str += f"{pct:>6.1f} | "
             row_str += f"|| {ret_pct:>6.1f}%"
             print(row_str)
-            
-    print(f"\n✨ FINAL TRUE HARDWARE TEST ACCURACY (G_OUT={champion.g_out}): {final_test_acc:.2f}%")
 
-    # --- NEW TEMPORAL SPIKE DIAGNOSTIC ---
-    print("\n===========================================================")
-    print("      TEMPORAL BASE OUTPUT SPIKES (50ms BUCKETS)           ")
-    print("===========================================================")
-    
-    bucket_size = 50
-    num_buckets = 1000 // bucket_size
-    binned_spikes = spk_out_tensor.view(-1, num_buckets, bucket_size, num_classes).sum(dim=2)
-    
-    for class_idx in range(len(inv_labels)):
-        class_name = inv_labels[class_idx]
-        class_mask = target_tensor_arr == class_idx
+    sorted_spikes, _ = torch.sort(spike_counts, dim=1, descending=True)
+    margin_diffs = sorted_spikes[:, 0] - sorted_spikes[:, 1]
+    is_keyword_target = (target_tensor_arr != idx_noise) & (target_tensor_arr != idx_silence)
+    total_real_keywords = is_keyword_target.sum().item()
+
+    print(f"\n--- Spike Margin Threshold Report (Base: {total_real_keywords} Real Keywords) ---")
+    for margin in [0, 1, 2, 3, 4, 5, 10, 15]:
+        margin_met = margin_diffs >= margin
+        is_keyword_pred = (pred_tensor_arr != idx_noise) & (pred_tensor_arr != idx_silence)
+        attempt_mask = margin_met & is_keyword_pred
+        total_attempts = attempt_mask.sum().item()
         
-        if class_mask.sum() == 0:
-            continue
-            
-        print(f"\n>>> Target Class: {class_name.upper()}")
-        header = f"{'Time (ms)':<10} | " + " | ".join([f"{inv_labels[i]:>6}" for i in range(num_classes)])
-        print(header)
-        print("-" * len(header))
+        correct_attempts = (pred_tensor_arr[attempt_mask] == target_tensor_arr[attempt_mask]).sum().item()
+        precision = (correct_attempts / total_attempts * 100) if total_attempts > 0 else 0.0
         
-        class_binned_spikes = binned_spikes[class_mask].float().mean(dim=0)
+        keywords_attempted = (attempt_mask & is_keyword_target).sum().item()
+        retention_pct = (keywords_attempted / total_real_keywords * 100) if total_real_keywords > 0 else 0.0
+
+        print(f">= {margin:2d} spikes diff | Prec (Acc): {precision:5.1f}% | Retention: {keywords_attempted:3d}/{total_real_keywords:3d} ({retention_pct:5.1f}%) | Total Triggers: {total_attempts}")
         
-        for b in range(num_buckets):
-            t_start = b * bucket_size
-            t_end = t_start + bucket_size
-            row_str = f"{t_start:>3}-{t_end:<3} | "
-            row_str += " | ".join([f"{class_binned_spikes[b, i]:>6.1f}" for i in range(num_classes)])
-            print(row_str)
+    print(f"\n✨ FINAL TRUE HARDWARE TEST ACCURACY (G_OUT={champion.g_out}): {final_test_acc:.2f}%")
 
 if __name__ == "__main__":
     main()

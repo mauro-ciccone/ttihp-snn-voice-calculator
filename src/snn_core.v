@@ -1955,425 +1955,735 @@ module snn_core (
     wire signed [11:0] next_hid_79 = mem_hid_79 - (mem_hid_79 >>> 3) + sum_hid_79;
 
     // ==========================================
-    // BASE OUTPUT LAYER (Linear Accumulation)
+    // BASE OUTPUT LAYER (Time-Multiplexed Accumulation)
     // ==========================================
     wire [5:0] base_spikes;
 
+    reg [6:0] base_cycle;
     reg signed [11:0] mem_base_0;
-    wire signed [11:0] sum_base_0 = 0
-        + (hid_spikes[1] ? 28 : 0)
-        + (hid_spikes[3] ? 48 : 0)
-        - (hid_spikes[4] ? 44 : 0)
-        + (hid_spikes[5] ? 32 : 0)
-        + (hid_spikes[6] ? 22 : 0)
-        + (hid_spikes[8] ? 33 : 0)
-        + (hid_spikes[9] ? 26 : 0)
-        - (hid_spikes[10] ? 21 : 0)
-        - (hid_spikes[11] ? 128 : 0)
-        + (hid_spikes[13] ? 29 : 0)
-        - (hid_spikes[15] ? 18 : 0)
-        + (hid_spikes[17] ? 72 : 0)
-        - (hid_spikes[18] ? 13 : 0)
-        + (hid_spikes[20] ? 55 : 0)
-        + (hid_spikes[21] ? 55 : 0)
-        + (hid_spikes[22] ? 37 : 0)
-        + (hid_spikes[23] ? 13 : 0)
-        - (hid_spikes[24] ? 31 : 0)
-        - (hid_spikes[25] ? 21 : 0)
-        + (hid_spikes[26] ? 50 : 0)
-        + (hid_spikes[27] ? 52 : 0)
-        + (hid_spikes[29] ? 20 : 0)
-        - (hid_spikes[30] ? 128 : 0)
-        + (hid_spikes[34] ? 16 : 0)
-        + (hid_spikes[35] ? 42 : 0)
-        - (hid_spikes[36] ? 35 : 0)
-        - (hid_spikes[37] ? 20 : 0)
-        - (hid_spikes[38] ? 40 : 0)
-        + (hid_spikes[39] ? 41 : 0)
-        + (hid_spikes[40] ? 51 : 0)
-        + (hid_spikes[42] ? 37 : 0)
-        + (hid_spikes[43] ? 77 : 0)
-        + (hid_spikes[44] ? 20 : 0)
-        + (hid_spikes[45] ? 22 : 0)
-        + (hid_spikes[46] ? 39 : 0)
-        - (hid_spikes[47] ? 88 : 0)
-        + (hid_spikes[48] ? 27 : 0)
-        + (hid_spikes[49] ? 39 : 0)
-        + (hid_spikes[50] ? 23 : 0)
-        + (hid_spikes[51] ? 34 : 0)
-        + (hid_spikes[52] ? 39 : 0)
-        - (hid_spikes[54] ? 33 : 0)
-        + (hid_spikes[56] ? 53 : 0)
-        + (hid_spikes[58] ? 14 : 0)
-        + (hid_spikes[59] ? 19 : 0)
-        - (hid_spikes[60] ? 19 : 0)
-        - (hid_spikes[62] ? 57 : 0)
-        - (hid_spikes[63] ? 67 : 0)
-        - (hid_spikes[64] ? 19 : 0)
-        - (hid_spikes[65] ? 27 : 0)
-        - (hid_spikes[66] ? 20 : 0)
-        - (hid_spikes[67] ? 23 : 0)
-        - (hid_spikes[68] ? 17 : 0)
-        - (hid_spikes[69] ? 39 : 0)
-        - (hid_spikes[70] ? 37 : 0)
-        + (hid_spikes[71] ? 16 : 0)
-        - (hid_spikes[73] ? 128 : 0)
-        - (hid_spikes[74] ? 23 : 0)
-        + (hid_spikes[77] ? 36 : 0)
-        - (hid_spikes[79] ? 44 : 0);
-    assign base_spikes[0] = (mem_base_0 >= 85);
-    wire signed [11:0] next_base_0 = mem_base_0 - (mem_base_0 >>> 6) + sum_base_0;
-
+    reg signed [11:0] sum_acc_0;
+    reg signed [11:0] curr_w_out_0;
     reg signed [11:0] mem_base_1;
-    wire signed [11:0] sum_base_1 = 0
-        - (hid_spikes[0] ? 107 : 0)
-        + (hid_spikes[1] ? 16 : 0)
-        - (hid_spikes[2] ? 82 : 0)
-        + (hid_spikes[3] ? 16 : 0)
-        - (hid_spikes[4] ? 90 : 0)
-        + (hid_spikes[5] ? 37 : 0)
-        - (hid_spikes[6] ? 43 : 0)
-        + (hid_spikes[8] ? 21 : 0)
-        - (hid_spikes[11] ? 128 : 0)
-        + (hid_spikes[12] ? 40 : 0)
-        + (hid_spikes[13] ? 17 : 0)
-        - (hid_spikes[14] ? 75 : 0)
-        + (hid_spikes[15] ? 60 : 0)
-        + (hid_spikes[17] ? 69 : 0)
-        - (hid_spikes[18] ? 54 : 0)
-        - (hid_spikes[19] ? 70 : 0)
-        + (hid_spikes[20] ? 85 : 0)
-        + (hid_spikes[21] ? 45 : 0)
-        - (hid_spikes[22] ? 21 : 0)
-        - (hid_spikes[23] ? 34 : 0)
-        - (hid_spikes[24] ? 12 : 0)
-        - (hid_spikes[26] ? 29 : 0)
-        + (hid_spikes[27] ? 92 : 0)
-        - (hid_spikes[29] ? 28 : 0)
-        + (hid_spikes[30] ? 43 : 0)
-        - (hid_spikes[31] ? 29 : 0)
-        - (hid_spikes[32] ? 81 : 0)
-        - (hid_spikes[33] ? 48 : 0)
-        + (hid_spikes[35] ? 34 : 0)
-        + (hid_spikes[36] ? 88 : 0)
-        + (hid_spikes[39] ? 34 : 0)
-        + (hid_spikes[40] ? 83 : 0)
-        - (hid_spikes[42] ? 34 : 0)
-        - (hid_spikes[43] ? 127 : 0)
-        - (hid_spikes[44] ? 62 : 0)
-        + (hid_spikes[45] ? 54 : 0)
-        - (hid_spikes[46] ? 18 : 0)
-        - (hid_spikes[47] ? 128 : 0)
-        + (hid_spikes[48] ? 123 : 0)
-        + (hid_spikes[49] ? 59 : 0)
-        - (hid_spikes[50] ? 16 : 0)
-        - (hid_spikes[51] ? 62 : 0)
-        + (hid_spikes[52] ? 24 : 0)
-        + (hid_spikes[53] ? 49 : 0)
-        - (hid_spikes[54] ? 45 : 0)
-        - (hid_spikes[56] ? 31 : 0)
-        + (hid_spikes[57] ? 60 : 0)
-        + (hid_spikes[59] ? 57 : 0)
-        + (hid_spikes[60] ? 61 : 0)
-        + (hid_spikes[61] ? 42 : 0)
-        - (hid_spikes[62] ? 118 : 0)
-        + (hid_spikes[63] ? 68 : 0)
-        + (hid_spikes[65] ? 13 : 0)
-        - (hid_spikes[66] ? 27 : 0)
-        + (hid_spikes[67] ? 25 : 0)
-        - (hid_spikes[68] ? 32 : 0)
-        - (hid_spikes[70] ? 51 : 0)
-        + (hid_spikes[71] ? 73 : 0)
-        - (hid_spikes[72] ? 48 : 0)
-        - (hid_spikes[73] ? 42 : 0)
-        + (hid_spikes[74] ? 75 : 0)
-        - (hid_spikes[75] ? 95 : 0)
-        - (hid_spikes[76] ? 41 : 0)
-        + (hid_spikes[78] ? 14 : 0)
-        - (hid_spikes[79] ? 61 : 0);
-    assign base_spikes[1] = (mem_base_1 >= 85);
-    wire signed [11:0] next_base_1 = mem_base_1 - (mem_base_1 >>> 6) + sum_base_1;
-
+    reg signed [11:0] sum_acc_1;
+    reg signed [11:0] curr_w_out_1;
     reg signed [11:0] mem_base_2;
-    wire signed [11:0] sum_base_2 = 0
-        - (hid_spikes[0] ? 128 : 0)
-        + (hid_spikes[1] ? 18 : 0)
-        - (hid_spikes[3] ? 23 : 0)
-        - (hid_spikes[4] ? 128 : 0)
-        + (hid_spikes[5] ? 34 : 0)
-        - (hid_spikes[6] ? 18 : 0)
-        - (hid_spikes[7] ? 13 : 0)
-        + (hid_spikes[8] ? 38 : 0)
-        + (hid_spikes[10] ? 33 : 0)
-        - (hid_spikes[11] ? 52 : 0)
-        - (hid_spikes[12] ? 30 : 0)
-        + (hid_spikes[13] ? 25 : 0)
-        - (hid_spikes[14] ? 13 : 0)
-        - (hid_spikes[15] ? 33 : 0)
-        - (hid_spikes[16] ? 24 : 0)
-        - (hid_spikes[17] ? 19 : 0)
-        + (hid_spikes[18] ? 14 : 0)
-        + (hid_spikes[19] ? 17 : 0)
-        + (hid_spikes[20] ? 26 : 0)
-        - (hid_spikes[21] ? 14 : 0)
-        - (hid_spikes[22] ? 45 : 0)
-        - (hid_spikes[24] ? 31 : 0)
-        - (hid_spikes[25] ? 35 : 0)
-        - (hid_spikes[26] ? 53 : 0)
-        + (hid_spikes[27] ? 48 : 0)
-        - (hid_spikes[28] ? 47 : 0)
-        - (hid_spikes[30] ? 128 : 0)
-        + (hid_spikes[31] ? 11 : 0)
-        - (hid_spikes[33] ? 18 : 0)
-        - (hid_spikes[34] ? 69 : 0)
-        + (hid_spikes[35] ? 22 : 0)
-        - (hid_spikes[36] ? 90 : 0)
-        - (hid_spikes[37] ? 45 : 0)
-        + (hid_spikes[39] ? 66 : 0)
-        + (hid_spikes[40] ? 31 : 0)
-        - (hid_spikes[41] ? 40 : 0)
-        - (hid_spikes[42] ? 12 : 0)
-        - (hid_spikes[43] ? 83 : 0)
-        + (hid_spikes[44] ? 47 : 0)
-        + (hid_spikes[45] ? 12 : 0)
-        + (hid_spikes[46] ? 28 : 0)
-        - (hid_spikes[47] ? 68 : 0)
-        + (hid_spikes[49] ? 76 : 0)
-        + (hid_spikes[51] ? 13 : 0)
-        + (hid_spikes[52] ? 59 : 0)
-        + (hid_spikes[53] ? 49 : 0)
-        - (hid_spikes[54] ? 108 : 0)
-        - (hid_spikes[56] ? 100 : 0)
-        + (hid_spikes[58] ? 46 : 0)
-        - (hid_spikes[60] ? 22 : 0)
-        + (hid_spikes[61] ? 14 : 0)
-        - (hid_spikes[62] ? 55 : 0)
-        + (hid_spikes[63] ? 39 : 0)
-        + (hid_spikes[64] ? 19 : 0)
-        + (hid_spikes[65] ? 17 : 0)
-        + (hid_spikes[66] ? 49 : 0)
-        + (hid_spikes[67] ? 65 : 0)
-        - (hid_spikes[68] ? 22 : 0)
-        + (hid_spikes[69] ? 26 : 0)
-        + (hid_spikes[71] ? 59 : 0)
-        - (hid_spikes[72] ? 57 : 0)
-        + (hid_spikes[73] ? 98 : 0)
-        + (hid_spikes[74] ? 28 : 0)
-        - (hid_spikes[76] ? 11 : 0)
-        + (hid_spikes[77] ? 53 : 0)
-        - (hid_spikes[78] ? 117 : 0)
-        - (hid_spikes[79] ? 37 : 0);
-    assign base_spikes[2] = (mem_base_2 >= 85);
-    wire signed [11:0] next_base_2 = mem_base_2 - (mem_base_2 >>> 6) + sum_base_2;
-
+    reg signed [11:0] sum_acc_2;
+    reg signed [11:0] curr_w_out_2;
     reg signed [11:0] mem_base_3;
-    wire signed [11:0] sum_base_3 = 0
-        + (hid_spikes[0] ? 50 : 0)
-        - (hid_spikes[1] ? 64 : 0)
-        + (hid_spikes[2] ? 26 : 0)
-        + (hid_spikes[4] ? 18 : 0)
-        + (hid_spikes[5] ? 13 : 0)
-        - (hid_spikes[6] ? 20 : 0)
-        + (hid_spikes[7] ? 37 : 0)
-        + (hid_spikes[8] ? 34 : 0)
-        - (hid_spikes[9] ? 49 : 0)
-        + (hid_spikes[10] ? 31 : 0)
-        - (hid_spikes[11] ? 128 : 0)
-        + (hid_spikes[14] ? 34 : 0)
-        - (hid_spikes[16] ? 27 : 0)
-        - (hid_spikes[17] ? 14 : 0)
-        + (hid_spikes[19] ? 12 : 0)
-        - (hid_spikes[21] ? 91 : 0)
-        + (hid_spikes[22] ? 34 : 0)
-        + (hid_spikes[24] ? 33 : 0)
-        + (hid_spikes[26] ? 64 : 0)
-        + (hid_spikes[27] ? 48 : 0)
-        - (hid_spikes[28] ? 73 : 0)
-        + (hid_spikes[30] ? 21 : 0)
-        - (hid_spikes[32] ? 16 : 0)
-        - (hid_spikes[33] ? 39 : 0)
-        - (hid_spikes[35] ? 22 : 0)
-        - (hid_spikes[36] ? 33 : 0)
-        - (hid_spikes[37] ? 17 : 0)
-        + (hid_spikes[38] ? 92 : 0)
-        + (hid_spikes[39] ? 91 : 0)
-        - (hid_spikes[40] ? 54 : 0)
-        - (hid_spikes[41] ? 27 : 0)
-        + (hid_spikes[42] ? 71 : 0)
-        - (hid_spikes[43] ? 29 : 0)
-        + (hid_spikes[44] ? 24 : 0)
-        - (hid_spikes[45] ? 12 : 0)
-        - (hid_spikes[47] ? 65 : 0)
-        + (hid_spikes[48] ? 34 : 0)
-        + (hid_spikes[49] ? 77 : 0)
-        + (hid_spikes[50] ? 74 : 0)
-        + (hid_spikes[51] ? 13 : 0)
-        - (hid_spikes[52] ? 21 : 0)
-        + (hid_spikes[53] ? 87 : 0)
-        - (hid_spikes[54] ? 128 : 0)
-        - (hid_spikes[55] ? 47 : 0)
-        + (hid_spikes[56] ? 26 : 0)
-        - (hid_spikes[57] ? 37 : 0)
-        - (hid_spikes[58] ? 13 : 0)
-        - (hid_spikes[59] ? 39 : 0)
-        + (hid_spikes[60] ? 30 : 0)
-        + (hid_spikes[61] ? 21 : 0)
-        + (hid_spikes[63] ? 37 : 0)
-        - (hid_spikes[64] ? 128 : 0)
-        - (hid_spikes[65] ? 86 : 0)
-        + (hid_spikes[66] ? 72 : 0)
-        - (hid_spikes[68] ? 66 : 0)
-        - (hid_spikes[70] ? 27 : 0)
-        + (hid_spikes[71] ? 41 : 0)
-        - (hid_spikes[72] ? 93 : 0)
-        + (hid_spikes[73] ? 127 : 0)
-        + (hid_spikes[74] ? 46 : 0)
-        - (hid_spikes[75] ? 55 : 0)
-        - (hid_spikes[76] ? 39 : 0)
-        - (hid_spikes[77] ? 43 : 0)
-        - (hid_spikes[78] ? 99 : 0);
-    assign base_spikes[3] = (mem_base_3 >= 85);
-    wire signed [11:0] next_base_3 = mem_base_3 - (mem_base_3 >>> 6) + sum_base_3;
-
+    reg signed [11:0] sum_acc_3;
+    reg signed [11:0] curr_w_out_3;
     reg signed [11:0] mem_base_4;
-    wire signed [11:0] sum_base_4 = 0
-        + (hid_spikes[0] ? 86 : 0)
-        - (hid_spikes[1] ? 85 : 0)
-        + (hid_spikes[2] ? 15 : 0)
-        + (hid_spikes[4] ? 35 : 0)
-        + (hid_spikes[6] ? 29 : 0)
-        + (hid_spikes[7] ? 39 : 0)
-        + (hid_spikes[8] ? 42 : 0)
-        + (hid_spikes[10] ? 25 : 0)
-        - (hid_spikes[11] ? 128 : 0)
-        - (hid_spikes[14] ? 95 : 0)
-        - (hid_spikes[15] ? 98 : 0)
-        + (hid_spikes[17] ? 50 : 0)
-        + (hid_spikes[18] ? 65 : 0)
-        - (hid_spikes[19] ? 107 : 0)
-        + (hid_spikes[20] ? 79 : 0)
-        - (hid_spikes[21] ? 70 : 0)
-        - (hid_spikes[22] ? 27 : 0)
-        + (hid_spikes[23] ? 16 : 0)
-        - (hid_spikes[25] ? 102 : 0)
-        + (hid_spikes[26] ? 62 : 0)
-        - (hid_spikes[27] ? 15 : 0)
-        + (hid_spikes[28] ? 91 : 0)
-        + (hid_spikes[29] ? 51 : 0)
-        - (hid_spikes[30] ? 52 : 0)
-        - (hid_spikes[31] ? 39 : 0)
-        - (hid_spikes[32] ? 15 : 0)
-        + (hid_spikes[33] ? 20 : 0)
-        - (hid_spikes[34] ? 78 : 0)
-        + (hid_spikes[35] ? 49 : 0)
-        - (hid_spikes[36] ? 90 : 0)
-        + (hid_spikes[37] ? 51 : 0)
-        + (hid_spikes[39] ? 19 : 0)
-        + (hid_spikes[40] ? 28 : 0)
-        + (hid_spikes[41] ? 80 : 0)
-        + (hid_spikes[43] ? 76 : 0)
-        + (hid_spikes[45] ? 24 : 0)
-        - (hid_spikes[46] ? 23 : 0)
-        - (hid_spikes[47] ? 23 : 0)
-        - (hid_spikes[48] ? 32 : 0)
-        + (hid_spikes[50] ? 63 : 0)
-        - (hid_spikes[51] ? 38 : 0)
-        + (hid_spikes[53] ? 76 : 0)
-        - (hid_spikes[54] ? 79 : 0)
-        - (hid_spikes[55] ? 28 : 0)
-        + (hid_spikes[56] ? 39 : 0)
-        + (hid_spikes[57] ? 64 : 0)
-        - (hid_spikes[58] ? 33 : 0)
-        + (hid_spikes[59] ? 21 : 0)
-        + (hid_spikes[60] ? 42 : 0)
-        - (hid_spikes[61] ? 35 : 0)
-        + (hid_spikes[62] ? 16 : 0)
-        - (hid_spikes[63] ? 13 : 0)
-        + (hid_spikes[64] ? 24 : 0)
-        + (hid_spikes[65] ? 33 : 0)
-        + (hid_spikes[66] ? 65 : 0)
-        - (hid_spikes[67] ? 16 : 0)
-        + (hid_spikes[68] ? 39 : 0)
-        - (hid_spikes[69] ? 57 : 0)
-        + (hid_spikes[70] ? 19 : 0)
-        + (hid_spikes[71] ? 12 : 0)
-        - (hid_spikes[72] ? 40 : 0)
-        - (hid_spikes[73] ? 65 : 0)
-        + (hid_spikes[74] ? 40 : 0)
-        - (hid_spikes[75] ? 41 : 0)
-        - (hid_spikes[76] ? 13 : 0)
-        - (hid_spikes[78] ? 128 : 0)
-        - (hid_spikes[79] ? 36 : 0);
-    assign base_spikes[4] = (mem_base_4 >= 85);
-    wire signed [11:0] next_base_4 = mem_base_4 - (mem_base_4 >>> 6) + sum_base_4;
-
+    reg signed [11:0] sum_acc_4;
+    reg signed [11:0] curr_w_out_4;
     reg signed [11:0] mem_base_5;
-    wire signed [11:0] sum_base_5 = 0
-        + (hid_spikes[0] ? 19 : 0)
-        - (hid_spikes[1] ? 37 : 0)
-        + (hid_spikes[2] ? 53 : 0)
-        - (hid_spikes[3] ? 51 : 0)
-        + (hid_spikes[4] ? 47 : 0)
-        + (hid_spikes[5] ? 35 : 0)
-        + (hid_spikes[6] ? 54 : 0)
-        + (hid_spikes[9] ? 21 : 0)
-        - (hid_spikes[11] ? 17 : 0)
-        + (hid_spikes[12] ? 31 : 0)
-        + (hid_spikes[13] ? 89 : 0)
-        + (hid_spikes[15] ? 20 : 0)
-        - (hid_spikes[16] ? 62 : 0)
-        - (hid_spikes[17] ? 20 : 0)
-        - (hid_spikes[18] ? 128 : 0)
-        - (hid_spikes[19] ? 33 : 0)
-        + (hid_spikes[20] ? 96 : 0)
-        + (hid_spikes[22] ? 74 : 0)
-        + (hid_spikes[23] ? 18 : 0)
-        + (hid_spikes[24] ? 41 : 0)
-        - (hid_spikes[25] ? 19 : 0)
-        - (hid_spikes[26] ? 61 : 0)
-        + (hid_spikes[28] ? 14 : 0)
-        + (hid_spikes[30] ? 23 : 0)
-        + (hid_spikes[32] ? 14 : 0)
-        - (hid_spikes[33] ? 96 : 0)
-        + (hid_spikes[34] ? 28 : 0)
-        - (hid_spikes[36] ? 45 : 0)
-        + (hid_spikes[37] ? 18 : 0)
-        + (hid_spikes[38] ? 20 : 0)
-        + (hid_spikes[39] ? 18 : 0)
-        + (hid_spikes[40] ? 54 : 0)
-        - (hid_spikes[42] ? 36 : 0)
-        + (hid_spikes[43] ? 24 : 0)
-        + (hid_spikes[45] ? 14 : 0)
-        + (hid_spikes[46] ? 23 : 0)
-        + (hid_spikes[47] ? 14 : 0)
-        - (hid_spikes[49] ? 15 : 0)
-        + (hid_spikes[50] ? 23 : 0)
-        + (hid_spikes[51] ? 87 : 0)
-        - (hid_spikes[52] ? 29 : 0)
-        - (hid_spikes[53] ? 13 : 0)
-        + (hid_spikes[54] ? 43 : 0)
-        - (hid_spikes[55] ? 58 : 0)
-        + (hid_spikes[57] ? 29 : 0)
-        - (hid_spikes[58] ? 72 : 0)
-        - (hid_spikes[60] ? 58 : 0)
-        + (hid_spikes[61] ? 14 : 0)
-        + (hid_spikes[62] ? 55 : 0)
-        - (hid_spikes[63] ? 16 : 0)
-        - (hid_spikes[64] ? 15 : 0)
-        - (hid_spikes[66] ? 69 : 0)
-        + (hid_spikes[67] ? 94 : 0)
-        - (hid_spikes[68] ? 26 : 0)
-        - (hid_spikes[69] ? 28 : 0)
-        - (hid_spikes[70] ? 32 : 0)
-        + (hid_spikes[71] ? 15 : 0)
-        + (hid_spikes[73] ? 38 : 0)
-        - (hid_spikes[74] ? 124 : 0)
-        - (hid_spikes[75] ? 128 : 0)
-        - (hid_spikes[76] ? 73 : 0)
-        + (hid_spikes[78] ? 13 : 0)
-        - (hid_spikes[79] ? 75 : 0);
+    reg signed [11:0] sum_acc_5;
+    reg signed [11:0] curr_w_out_5;
+
+    // Weight ROM for Time-Multiplexing
+    always @(*) begin
+        case (base_cycle)
+            7'd0: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -107;
+                curr_w_out_2 = -128;
+                curr_w_out_3 = 50;
+                curr_w_out_4 = 86;
+                curr_w_out_5 = 19;
+            end
+            7'd1: begin
+                curr_w_out_0 = 28;
+                curr_w_out_1 = 16;
+                curr_w_out_2 = 18;
+                curr_w_out_3 = -64;
+                curr_w_out_4 = -85;
+                curr_w_out_5 = -37;
+            end
+            7'd2: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -82;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = 26;
+                curr_w_out_4 = 15;
+                curr_w_out_5 = 53;
+            end
+            7'd3: begin
+                curr_w_out_0 = 48;
+                curr_w_out_1 = 16;
+                curr_w_out_2 = -23;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = -51;
+            end
+            7'd4: begin
+                curr_w_out_0 = -44;
+                curr_w_out_1 = -90;
+                curr_w_out_2 = -128;
+                curr_w_out_3 = 18;
+                curr_w_out_4 = 35;
+                curr_w_out_5 = 47;
+            end
+            7'd5: begin
+                curr_w_out_0 = 32;
+                curr_w_out_1 = 37;
+                curr_w_out_2 = 34;
+                curr_w_out_3 = 13;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = 35;
+            end
+            7'd6: begin
+                curr_w_out_0 = 22;
+                curr_w_out_1 = -43;
+                curr_w_out_2 = -18;
+                curr_w_out_3 = -20;
+                curr_w_out_4 = 29;
+                curr_w_out_5 = 54;
+            end
+            7'd7: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = -13;
+                curr_w_out_3 = 37;
+                curr_w_out_4 = 39;
+                curr_w_out_5 = 0;
+            end
+            7'd8: begin
+                curr_w_out_0 = 33;
+                curr_w_out_1 = 21;
+                curr_w_out_2 = 38;
+                curr_w_out_3 = 34;
+                curr_w_out_4 = 42;
+                curr_w_out_5 = 0;
+            end
+            7'd9: begin
+                curr_w_out_0 = 26;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = -49;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = 21;
+            end
+            7'd10: begin
+                curr_w_out_0 = -21;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = 33;
+                curr_w_out_3 = 31;
+                curr_w_out_4 = 25;
+                curr_w_out_5 = 0;
+            end
+            7'd11: begin
+                curr_w_out_0 = -128;
+                curr_w_out_1 = -128;
+                curr_w_out_2 = -52;
+                curr_w_out_3 = -128;
+                curr_w_out_4 = -128;
+                curr_w_out_5 = -17;
+            end
+            7'd12: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 40;
+                curr_w_out_2 = -30;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = 31;
+            end
+            7'd13: begin
+                curr_w_out_0 = 29;
+                curr_w_out_1 = 17;
+                curr_w_out_2 = 25;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = 89;
+            end
+            7'd14: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -75;
+                curr_w_out_2 = -13;
+                curr_w_out_3 = 34;
+                curr_w_out_4 = -95;
+                curr_w_out_5 = 0;
+            end
+            7'd15: begin
+                curr_w_out_0 = -18;
+                curr_w_out_1 = 60;
+                curr_w_out_2 = -33;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = -98;
+                curr_w_out_5 = 20;
+            end
+            7'd16: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = -24;
+                curr_w_out_3 = -27;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = -62;
+            end
+            7'd17: begin
+                curr_w_out_0 = 72;
+                curr_w_out_1 = 69;
+                curr_w_out_2 = -19;
+                curr_w_out_3 = -14;
+                curr_w_out_4 = 50;
+                curr_w_out_5 = -20;
+            end
+            7'd18: begin
+                curr_w_out_0 = -13;
+                curr_w_out_1 = -54;
+                curr_w_out_2 = 14;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = 65;
+                curr_w_out_5 = -128;
+            end
+            7'd19: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -70;
+                curr_w_out_2 = 17;
+                curr_w_out_3 = 12;
+                curr_w_out_4 = -107;
+                curr_w_out_5 = -33;
+            end
+            7'd20: begin
+                curr_w_out_0 = 55;
+                curr_w_out_1 = 85;
+                curr_w_out_2 = 26;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = 79;
+                curr_w_out_5 = 96;
+            end
+            7'd21: begin
+                curr_w_out_0 = 55;
+                curr_w_out_1 = 45;
+                curr_w_out_2 = -14;
+                curr_w_out_3 = -91;
+                curr_w_out_4 = -70;
+                curr_w_out_5 = 0;
+            end
+            7'd22: begin
+                curr_w_out_0 = 37;
+                curr_w_out_1 = -21;
+                curr_w_out_2 = -45;
+                curr_w_out_3 = 34;
+                curr_w_out_4 = -27;
+                curr_w_out_5 = 74;
+            end
+            7'd23: begin
+                curr_w_out_0 = 13;
+                curr_w_out_1 = -34;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = 16;
+                curr_w_out_5 = 18;
+            end
+            7'd24: begin
+                curr_w_out_0 = -31;
+                curr_w_out_1 = -12;
+                curr_w_out_2 = -31;
+                curr_w_out_3 = 33;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = 41;
+            end
+            7'd25: begin
+                curr_w_out_0 = -21;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = -35;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = -102;
+                curr_w_out_5 = -19;
+            end
+            7'd26: begin
+                curr_w_out_0 = 50;
+                curr_w_out_1 = -29;
+                curr_w_out_2 = -53;
+                curr_w_out_3 = 64;
+                curr_w_out_4 = 62;
+                curr_w_out_5 = -61;
+            end
+            7'd27: begin
+                curr_w_out_0 = 52;
+                curr_w_out_1 = 92;
+                curr_w_out_2 = 48;
+                curr_w_out_3 = 48;
+                curr_w_out_4 = -15;
+                curr_w_out_5 = 0;
+            end
+            7'd28: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = -47;
+                curr_w_out_3 = -73;
+                curr_w_out_4 = 91;
+                curr_w_out_5 = 14;
+            end
+            7'd29: begin
+                curr_w_out_0 = 20;
+                curr_w_out_1 = -28;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = 51;
+                curr_w_out_5 = 0;
+            end
+            7'd30: begin
+                curr_w_out_0 = -128;
+                curr_w_out_1 = 43;
+                curr_w_out_2 = -128;
+                curr_w_out_3 = 21;
+                curr_w_out_4 = -52;
+                curr_w_out_5 = 23;
+            end
+            7'd31: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -29;
+                curr_w_out_2 = 11;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = -39;
+                curr_w_out_5 = 0;
+            end
+            7'd32: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -81;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = -16;
+                curr_w_out_4 = -15;
+                curr_w_out_5 = 14;
+            end
+            7'd33: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -48;
+                curr_w_out_2 = -18;
+                curr_w_out_3 = -39;
+                curr_w_out_4 = 20;
+                curr_w_out_5 = -96;
+            end
+            7'd34: begin
+                curr_w_out_0 = 16;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = -69;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = -78;
+                curr_w_out_5 = 28;
+            end
+            7'd35: begin
+                curr_w_out_0 = 42;
+                curr_w_out_1 = 34;
+                curr_w_out_2 = 22;
+                curr_w_out_3 = -22;
+                curr_w_out_4 = 49;
+                curr_w_out_5 = 0;
+            end
+            7'd36: begin
+                curr_w_out_0 = -35;
+                curr_w_out_1 = 88;
+                curr_w_out_2 = -90;
+                curr_w_out_3 = -33;
+                curr_w_out_4 = -90;
+                curr_w_out_5 = -45;
+            end
+            7'd37: begin
+                curr_w_out_0 = -20;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = -45;
+                curr_w_out_3 = -17;
+                curr_w_out_4 = 51;
+                curr_w_out_5 = 18;
+            end
+            7'd38: begin
+                curr_w_out_0 = -40;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = 92;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = 20;
+            end
+            7'd39: begin
+                curr_w_out_0 = 41;
+                curr_w_out_1 = 34;
+                curr_w_out_2 = 66;
+                curr_w_out_3 = 91;
+                curr_w_out_4 = 19;
+                curr_w_out_5 = 18;
+            end
+            7'd40: begin
+                curr_w_out_0 = 51;
+                curr_w_out_1 = 83;
+                curr_w_out_2 = 31;
+                curr_w_out_3 = -54;
+                curr_w_out_4 = 28;
+                curr_w_out_5 = 54;
+            end
+            7'd41: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = -40;
+                curr_w_out_3 = -27;
+                curr_w_out_4 = 80;
+                curr_w_out_5 = 0;
+            end
+            7'd42: begin
+                curr_w_out_0 = 37;
+                curr_w_out_1 = -34;
+                curr_w_out_2 = -12;
+                curr_w_out_3 = 71;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = -36;
+            end
+            7'd43: begin
+                curr_w_out_0 = 77;
+                curr_w_out_1 = -127;
+                curr_w_out_2 = -83;
+                curr_w_out_3 = -29;
+                curr_w_out_4 = 76;
+                curr_w_out_5 = 24;
+            end
+            7'd44: begin
+                curr_w_out_0 = 20;
+                curr_w_out_1 = -62;
+                curr_w_out_2 = 47;
+                curr_w_out_3 = 24;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = 0;
+            end
+            7'd45: begin
+                curr_w_out_0 = 22;
+                curr_w_out_1 = 54;
+                curr_w_out_2 = 12;
+                curr_w_out_3 = -12;
+                curr_w_out_4 = 24;
+                curr_w_out_5 = 14;
+            end
+            7'd46: begin
+                curr_w_out_0 = 39;
+                curr_w_out_1 = -18;
+                curr_w_out_2 = 28;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = -23;
+                curr_w_out_5 = 23;
+            end
+            7'd47: begin
+                curr_w_out_0 = -88;
+                curr_w_out_1 = -128;
+                curr_w_out_2 = -68;
+                curr_w_out_3 = -65;
+                curr_w_out_4 = -23;
+                curr_w_out_5 = 14;
+            end
+            7'd48: begin
+                curr_w_out_0 = 27;
+                curr_w_out_1 = 123;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = 34;
+                curr_w_out_4 = -32;
+                curr_w_out_5 = 0;
+            end
+            7'd49: begin
+                curr_w_out_0 = 39;
+                curr_w_out_1 = 59;
+                curr_w_out_2 = 76;
+                curr_w_out_3 = 77;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = -15;
+            end
+            7'd50: begin
+                curr_w_out_0 = 23;
+                curr_w_out_1 = -16;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = 74;
+                curr_w_out_4 = 63;
+                curr_w_out_5 = 23;
+            end
+            7'd51: begin
+                curr_w_out_0 = 34;
+                curr_w_out_1 = -62;
+                curr_w_out_2 = 13;
+                curr_w_out_3 = 13;
+                curr_w_out_4 = -38;
+                curr_w_out_5 = 87;
+            end
+            7'd52: begin
+                curr_w_out_0 = 39;
+                curr_w_out_1 = 24;
+                curr_w_out_2 = 59;
+                curr_w_out_3 = -21;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = -29;
+            end
+            7'd53: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 49;
+                curr_w_out_2 = 49;
+                curr_w_out_3 = 87;
+                curr_w_out_4 = 76;
+                curr_w_out_5 = -13;
+            end
+            7'd54: begin
+                curr_w_out_0 = -33;
+                curr_w_out_1 = -45;
+                curr_w_out_2 = -108;
+                curr_w_out_3 = -128;
+                curr_w_out_4 = -79;
+                curr_w_out_5 = 43;
+            end
+            7'd55: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = -47;
+                curr_w_out_4 = -28;
+                curr_w_out_5 = -58;
+            end
+            7'd56: begin
+                curr_w_out_0 = 53;
+                curr_w_out_1 = -31;
+                curr_w_out_2 = -100;
+                curr_w_out_3 = 26;
+                curr_w_out_4 = 39;
+                curr_w_out_5 = 0;
+            end
+            7'd57: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 60;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = -37;
+                curr_w_out_4 = 64;
+                curr_w_out_5 = 29;
+            end
+            7'd58: begin
+                curr_w_out_0 = 14;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = 46;
+                curr_w_out_3 = -13;
+                curr_w_out_4 = -33;
+                curr_w_out_5 = -72;
+            end
+            7'd59: begin
+                curr_w_out_0 = 19;
+                curr_w_out_1 = 57;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = -39;
+                curr_w_out_4 = 21;
+                curr_w_out_5 = 0;
+            end
+            7'd60: begin
+                curr_w_out_0 = -19;
+                curr_w_out_1 = 61;
+                curr_w_out_2 = -22;
+                curr_w_out_3 = 30;
+                curr_w_out_4 = 42;
+                curr_w_out_5 = -58;
+            end
+            7'd61: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 42;
+                curr_w_out_2 = 14;
+                curr_w_out_3 = 21;
+                curr_w_out_4 = -35;
+                curr_w_out_5 = 14;
+            end
+            7'd62: begin
+                curr_w_out_0 = -57;
+                curr_w_out_1 = -118;
+                curr_w_out_2 = -55;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = 16;
+                curr_w_out_5 = 55;
+            end
+            7'd63: begin
+                curr_w_out_0 = -67;
+                curr_w_out_1 = 68;
+                curr_w_out_2 = 39;
+                curr_w_out_3 = 37;
+                curr_w_out_4 = -13;
+                curr_w_out_5 = -16;
+            end
+            7'd64: begin
+                curr_w_out_0 = -19;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = 19;
+                curr_w_out_3 = -128;
+                curr_w_out_4 = 24;
+                curr_w_out_5 = -15;
+            end
+            7'd65: begin
+                curr_w_out_0 = -27;
+                curr_w_out_1 = 13;
+                curr_w_out_2 = 17;
+                curr_w_out_3 = -86;
+                curr_w_out_4 = 33;
+                curr_w_out_5 = 0;
+            end
+            7'd66: begin
+                curr_w_out_0 = -20;
+                curr_w_out_1 = -27;
+                curr_w_out_2 = 49;
+                curr_w_out_3 = 72;
+                curr_w_out_4 = 65;
+                curr_w_out_5 = -69;
+            end
+            7'd67: begin
+                curr_w_out_0 = -23;
+                curr_w_out_1 = 25;
+                curr_w_out_2 = 65;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = -16;
+                curr_w_out_5 = 94;
+            end
+            7'd68: begin
+                curr_w_out_0 = -17;
+                curr_w_out_1 = -32;
+                curr_w_out_2 = -22;
+                curr_w_out_3 = -66;
+                curr_w_out_4 = 39;
+                curr_w_out_5 = -26;
+            end
+            7'd69: begin
+                curr_w_out_0 = -39;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = 26;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = -57;
+                curr_w_out_5 = -28;
+            end
+            7'd70: begin
+                curr_w_out_0 = -37;
+                curr_w_out_1 = -51;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = -27;
+                curr_w_out_4 = 19;
+                curr_w_out_5 = -32;
+            end
+            7'd71: begin
+                curr_w_out_0 = 16;
+                curr_w_out_1 = 73;
+                curr_w_out_2 = 59;
+                curr_w_out_3 = 41;
+                curr_w_out_4 = 12;
+                curr_w_out_5 = 15;
+            end
+            7'd72: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -48;
+                curr_w_out_2 = -57;
+                curr_w_out_3 = -93;
+                curr_w_out_4 = -40;
+                curr_w_out_5 = 0;
+            end
+            7'd73: begin
+                curr_w_out_0 = -128;
+                curr_w_out_1 = -42;
+                curr_w_out_2 = 98;
+                curr_w_out_3 = 127;
+                curr_w_out_4 = -65;
+                curr_w_out_5 = 38;
+            end
+            7'd74: begin
+                curr_w_out_0 = -23;
+                curr_w_out_1 = 75;
+                curr_w_out_2 = 28;
+                curr_w_out_3 = 46;
+                curr_w_out_4 = 40;
+                curr_w_out_5 = -124;
+            end
+            7'd75: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -95;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = -55;
+                curr_w_out_4 = -41;
+                curr_w_out_5 = -128;
+            end
+            7'd76: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = -41;
+                curr_w_out_2 = -11;
+                curr_w_out_3 = -39;
+                curr_w_out_4 = -13;
+                curr_w_out_5 = -73;
+            end
+            7'd77: begin
+                curr_w_out_0 = 36;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = 53;
+                curr_w_out_3 = -43;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = 0;
+            end
+            7'd78: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 14;
+                curr_w_out_2 = -117;
+                curr_w_out_3 = -99;
+                curr_w_out_4 = -128;
+                curr_w_out_5 = 13;
+            end
+            7'd79: begin
+                curr_w_out_0 = -44;
+                curr_w_out_1 = -61;
+                curr_w_out_2 = -37;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = -36;
+                curr_w_out_5 = -75;
+            end
+            default: begin
+                curr_w_out_0 = 0;
+                curr_w_out_1 = 0;
+                curr_w_out_2 = 0;
+                curr_w_out_3 = 0;
+                curr_w_out_4 = 0;
+                curr_w_out_5 = 0;
+            end
+        endcase
+    end
+
+    // Synchronous Accumulator
+    always @(posedge clk_1mhz or negedge rst_n) begin
+        if (!rst_n) begin
+            base_cycle <= 0;
+            sum_acc_0 <= 0;
+            sum_acc_1 <= 0;
+            sum_acc_2 <= 0;
+            sum_acc_3 <= 0;
+            sum_acc_4 <= 0;
+            sum_acc_5 <= 0;
+        end else if (tick_1ms) begin
+            // Reset counters for the new 1ms frame
+            base_cycle <= 0;
+            sum_acc_0 <= 0;
+            sum_acc_1 <= 0;
+            sum_acc_2 <= 0;
+            sum_acc_3 <= 0;
+            sum_acc_4 <= 0;
+            sum_acc_5 <= 0;
+        end else if (base_cycle < 80) begin
+            // Accumulate weights if the hidden neuron spiked
+            if (hid_spikes[base_cycle]) begin
+                sum_acc_0 <= sum_acc_0 + curr_w_out_0;
+                sum_acc_1 <= sum_acc_1 + curr_w_out_1;
+                sum_acc_2 <= sum_acc_2 + curr_w_out_2;
+                sum_acc_3 <= sum_acc_3 + curr_w_out_3;
+                sum_acc_4 <= sum_acc_4 + curr_w_out_4;
+                sum_acc_5 <= sum_acc_5 + curr_w_out_5;
+            end
+            base_cycle <= base_cycle + 1;
+        end
+    end
+
+    // Membrane Updates
+    assign base_spikes[0] = (mem_base_0 >= 85);
+    wire signed [11:0] next_base_0 = mem_base_0 - (mem_base_0 >>> 6) + sum_acc_0;
+
+    assign base_spikes[1] = (mem_base_1 >= 85);
+    wire signed [11:0] next_base_1 = mem_base_1 - (mem_base_1 >>> 6) + sum_acc_1;
+
+    assign base_spikes[2] = (mem_base_2 >= 85);
+    wire signed [11:0] next_base_2 = mem_base_2 - (mem_base_2 >>> 6) + sum_acc_2;
+
+    assign base_spikes[3] = (mem_base_3 >= 85);
+    wire signed [11:0] next_base_3 = mem_base_3 - (mem_base_3 >>> 6) + sum_acc_3;
+
+    assign base_spikes[4] = (mem_base_4 >= 85);
+    wire signed [11:0] next_base_4 = mem_base_4 - (mem_base_4 >>> 6) + sum_acc_4;
+
     assign base_spikes[5] = (mem_base_5 >= 85);
-    wire signed [11:0] next_base_5 = mem_base_5 - (mem_base_5 >>> 6) + sum_base_5;
+    wire signed [11:0] next_base_5 = mem_base_5 - (mem_base_5 >>> 6) + sum_acc_5;
 
     // ==========================================
     // WTA RACE-LATCH LAYER (Asymmetric Logic)

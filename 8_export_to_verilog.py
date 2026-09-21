@@ -115,24 +115,59 @@ def main():
             f.write(f"    assign hid_spikes[{i}] = (mem_hid_{i} >= {thresh_hid});\n")
             f.write(f"    wire signed [11:0] next_hid_{i} = mem_hid_{i} - (mem_hid_{i} >>> {fb_hid[i]}) + sum_hid_{i};\n\n")
 
-        # --- BASE OUTPUT LAYER (Descriptive Linear Logic) ---
+        # --- BASE OUTPUT LAYER (Time-Multiplexed Accumulation) ---
         f.write("    // ==========================================\n")
-        f.write("    // BASE OUTPUT LAYER (Linear Accumulation)\n")
+        f.write("    // BASE OUTPUT LAYER (Time-Multiplexed Accumulation)\n")
         f.write("    // ==========================================\n")
         f.write(f"    wire [{num_outputs-1}:0] base_spikes;\n\n")
         
+        f.write("    reg [6:0] base_cycle;\n")
         for i in range(num_outputs):
             f.write(f"    reg signed [11:0] mem_base_{i};\n")
-            terms = []
-            for j in range(num_hidden):
-                w = int(w_out_int[i, j])
-                if w > 0:   terms.append(f"+ (hid_spikes[{j}] ? {w} : 0)")
-                elif w < 0: terms.append(f"- (hid_spikes[{j}] ? {-w} : 0)")
+            f.write(f"    reg signed [11:0] sum_acc_{i};\n")
+            f.write(f"    reg signed [11:0] curr_w_out_{i};\n")
             
-            expr = "\n        ".join(terms) if terms else "+ 0"
-            f.write(f"    wire signed [11:0] sum_base_{i} = 0\n        {expr};\n")
+        f.write("\n    // Weight ROM for Time-Multiplexing\n")
+        f.write("    always @(*) begin\n")
+        f.write("        case (base_cycle)\n")
+        for j in range(num_hidden):
+            f.write(f"            7'd{j}: begin\n")
+            for i in range(num_outputs):
+                w = int(w_out_int[i, j])
+                f.write(f"                curr_w_out_{i} = {w};\n")
+            f.write("            end\n")
+        f.write("            default: begin\n")
+        for i in range(num_outputs):
+            f.write(f"                curr_w_out_{i} = 0;\n")
+        f.write("            end\n")
+        f.write("        endcase\n")
+        f.write("    end\n\n")
+
+        f.write("    // Synchronous Accumulator\n")
+        f.write("    always @(posedge clk_1mhz or negedge rst_n) begin\n")
+        f.write("        if (!rst_n) begin\n")
+        f.write("            base_cycle <= 0;\n")
+        for i in range(num_outputs):
+            f.write(f"            sum_acc_{i} <= 0;\n")
+        f.write("        end else if (tick_1ms) begin\n")
+        f.write("            // Reset counters for the new 1ms frame\n")
+        f.write("            base_cycle <= 0;\n")
+        for i in range(num_outputs):
+            f.write(f"            sum_acc_{i} <= 0;\n")
+        f.write(f"        end else if (base_cycle < {num_hidden}) begin\n")
+        f.write("            // Accumulate weights if the hidden neuron spiked\n")
+        f.write("            if (hid_spikes[base_cycle]) begin\n")
+        for i in range(num_outputs):
+            f.write(f"                sum_acc_{i} <= sum_acc_{i} + curr_w_out_{i};\n")
+        f.write("            end\n")
+        f.write("            base_cycle <= base_cycle + 1;\n")
+        f.write("        end\n")
+        f.write("    end\n\n")
+
+        f.write("    // Membrane Updates\n")
+        for i in range(num_outputs):
             f.write(f"    assign base_spikes[{i}] = (mem_base_{i} >= {thresh_out});\n")
-            f.write(f"    wire signed [11:0] next_base_{i} = mem_base_{i} - (mem_base_{i} >>> {fb_out[i]}) + sum_base_{i};\n\n")
+            f.write(f"    wire signed [11:0] next_base_{i} = mem_base_{i} - (mem_base_{i} >>> {fb_out[i]}) + sum_acc_{i};\n\n")
 
         # --- WTA LAYER ---
         f.write("    // ==========================================\n")

@@ -15,8 +15,21 @@ jobs:
 
       - name: Build GDS
         uses: TinyTapeout/tt-gds-action@ttihp26b
+        timeout-minutes: 20 
         with:
           pdk: ihp-sg13g2
+
+        # 2. FORCE UPLOAD LOGS EVEN IF THE BUILD TIMED OUT OR FAILED
+      - name: Upload TinyTapeout Build Logs
+        if: always() 
+        uses: actions/upload-artifact@v4
+        with:
+          name: tt-gds-logs
+          # TinyTapeout saves OpenLane/LibreLane logs here:
+          path: |
+            runs/*/logs/
+            runs/*/reports/
+            *.log
 
   precheck:
     needs: gds

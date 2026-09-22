@@ -19,17 +19,15 @@ jobs:
         with:
           pdk: ihp-sg13g2
 
-        # 2. FORCE UPLOAD LOGS EVEN IF THE BUILD TIMED OUT OR FAILED
       - name: Upload TinyTapeout Build Logs
         if: always() 
         uses: actions/upload-artifact@v4
         with:
           name: tt-gds-logs
-          # TinyTapeout saves OpenLane/LibreLane logs here:
           path: |
-            runs/*/logs/
-            runs/*/reports/
-            *.log
+            logs/
+            reports/
+            **/*.log
 
   precheck:
     needs: gds

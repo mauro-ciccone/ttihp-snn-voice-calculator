@@ -110,9 +110,9 @@ def main():
             pos_expr = "\n        + ".join(pos_terms) if pos_terms else "0"
             neg_expr = "\n        + ".join(neg_terms) if neg_terms else "0"
             
-            f.write(f"    (* keep = 1 *) wire signed [11:0] pos_in_{i} = {pos_expr};\n")
-            f.write(f"    (* keep = 1 *) wire signed [11:0] neg_in_{i} = {neg_expr};\n")
-            f.write(f"    (* keep = 1 *) wire signed [11:0] sum_hid_{i} = pos_in_{i} - neg_in_{i};\n")
+            f.write(f"    wire signed [11:0] pos_in_{i} = {pos_expr};\n")
+            f.write(f"    wire signed [11:0] neg_in_{i} = {neg_expr};\n")
+            f.write(f"    wire signed [11:0] sum_hid_{i} = pos_in_{i} - neg_in_{i};\n")
             f.write(f"    assign hid_spikes[{i}] = (mem_hid_{i} >= {thresh_hid});\n")
             f.write(f"    wire signed [11:0] next_hid_{i} = mem_hid_{i} - (mem_hid_{i} >>> {fb_hid[i]}) + sum_hid_{i};\n\n")
 

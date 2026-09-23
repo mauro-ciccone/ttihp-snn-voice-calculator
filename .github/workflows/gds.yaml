@@ -15,7 +15,7 @@ jobs:
 
       - name: Build GDS
         uses: TinyTapeout/tt-gds-action@ttihp26b
-        timeout-minutes: 239
+        timeout-minutes: 299
         with:
           pdk: ihp-sg13g2
 

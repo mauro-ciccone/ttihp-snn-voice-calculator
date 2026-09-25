@@ -6,11 +6,11 @@ from utils_ledger import load_ledger
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
-TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
+TARGET_FOLDER = "experiments/0924_1200_64_neuron_model" 
 
 # GA Hyperparameters
-POP_SIZE = 2000
-GENERATIONS = 100
+POP_SIZE = 1000
+GENERATIONS = 30
 MUTATION_RATE = 0.15
 ELITE_FRAC = 0.05
 NUM_KEYWORDS = 5
@@ -66,11 +66,11 @@ def main():
     pop_beta_idx = torch.randint(60, 64, (POP_SIZE, NUM_KEYWORDS), device=device)
     
     # --- 2. INJECT GOLDEN SYMMETRIC SEED (Top 50% of population) ---
-    seed_count = int(POP_SIZE * 0.50)
+    seed_count = int(POP_SIZE * 0.80)
     
     # W_exc = +6, W_inh = -1
     ideal_w_in = torch.full((NUM_KEYWORDS, NUM_KEYWORDS), -1.0, device=device)
-    ideal_w_in.fill_diagonal_(6.0) 
+    ideal_w_in.fill_diagonal_(5.0) 
     
     # Noise = -2
     ideal_w_in = torch.cat([ideal_w_in, torch.full((NUM_KEYWORDS, 1), -2.0, device=device)], dim=-1)

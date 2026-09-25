@@ -5,10 +5,10 @@ from model import FastSpikingNet
 from utils_ledger import create_ledger, append_commit
 
 # --- INITIALIZATION CONFIG ---
-EXP_NAME = "6_neuron_cochlea_no_vier"
+EXP_NAME = "64_neuron_model"
 BASE_CONFIG = {
     "num_inputs": 6,           # 6 hardware LIF channels (7 freq + 1 noise gate)
-    "num_hidden": 80,          # Expanded search space for Phase 1
+    "num_hidden": 64,          # Expanded search space for Phase 1
     "num_outputs": 6,          # 4 numbers + 2 operators (+/-) + 1 noise
     "batch_size": 128,
     "beta": 0.88,              # Hot start leak rate

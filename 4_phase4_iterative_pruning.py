@@ -10,9 +10,9 @@ from snntorch import surrogate
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
-TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-MODEL_NAME = "acc86.3_sparsity22.5.pth"
-EPOCHS_TO_RUN = 0
+TARGET_FOLDER = "experiments/0924_1200_64_neuron_model" 
+MODEL_NAME = "acc76.5_sparsity20.0.pth"
+EPOCHS_TO_RUN = 300
 
 # --- HARDWARE CONSTANTS ---
 VALID_BETAS = torch.tensor([
@@ -96,7 +96,7 @@ class Phase4QATSparseNet(nn.Module):
             self.thresh_out = torch.round(1.0 / self.delta_out) * self.delta_out
 
             # --- PARETO OPTIMAL REGISTER OVERFLOW LIMITS ---
-            pareto_path = os.path.join(TARGET_FOLDER, "pareto_config_84.0.pt")
+            pareto_path = os.path.join(TARGET_FOLDER, "pareto_config_65.0.pt")
             if os.path.exists(pareto_path):
                 pareto_cfg = torch.load(pareto_path, map_location=device)
                 int_bits_hid = pareto_cfg["int_bits_hid"].to(device)
@@ -245,7 +245,7 @@ def main():
             print(">>> Warning: 'w_in' not found in checkpoint state dict.")
     
     # 3e-4 keeps the network plastic enough to route around holes
-    optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=2e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-12)
     
     # Starting Sparsity Tracking
@@ -317,10 +317,10 @@ def main():
 
         
 
-        if epoch % 10 == 0:
+        if epoch % 9 == 0:
             # --- PHASE 4: ITERATIVE MAGNITUDE PRUNING ---
             with torch.no_grad():
-                def apply_sparsity_mask(weight, mask, target_drop_rate=0.005):
+                def apply_sparsity_mask(weight, mask, target_drop_rate=0.01):
                     active_w = torch.abs(weight * mask)
                     alive_elements = active_w[active_w > 0]
                     if len(alive_elements) > 0:

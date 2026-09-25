@@ -2,7 +2,7 @@ import os
 import math
 import torch
 
-TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier"
+TARGET_FOLDER = "experiments/0924_1200_64_neuron_model"
 
 VALID_BETAS = [
     0.0000, 0.0156, 0.0312, 0.0469, 0.0625, 0.0781, 0.0938, 0.1094, 

@@ -3,8 +3,8 @@ import torch
 from utils_ledger import load_ledger
 from model import FastSpikingNet
 
-TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-SPARSE_CHECKPOINT = "acc86.3_sparsity22.5.pth" 
+TARGET_FOLDER = "experiments/0924_1200_64_neuron_model" 
+SPARSE_CHECKPOINT = "acc77.4_sparsity16.8.pth" 
 
 # --- FINAL HARDWARE BUDGET ---
 G_IN = 2   
@@ -39,7 +39,7 @@ def main():
     print(f"\n=== FINAL EXPORT: Compiling Tapeout Model (G_IN={G_IN}, G_REC={G_REC}) ===")
     
     ckpt = torch.load(os.path.join(TARGET_FOLDER, SPARSE_CHECKPOINT), map_location=device)
-    pareto_cfg = torch.load(os.path.join(TARGET_FOLDER, "pareto_config_84.0.pt"), map_location=device)
+    pareto_cfg = torch.load(os.path.join(TARGET_FOLDER, "pareto_config_65.0.pt"), map_location=device)
     
     # 1. Recover original dense model for correct base deltas
     base_ckpt = torch.load(os.path.join(TARGET_FOLDER, "model_best.pth"), map_location=device)

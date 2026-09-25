@@ -9,7 +9,7 @@ from utils_ledger import load_ledger
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
-TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
+TARGET_FOLDER = "experiments/0924_1200_64_neuron_model" 
 GENERATIONS = 0 
 POP_SIZE = 10
 MUTATION_RATE = 0.05
@@ -26,7 +26,7 @@ class PureIntegerHardwareNet(nn.Module):
         self.num_outputs = config["num_outputs"]
 
         # Load the fully synchronized and patched Phase 5 Pure Integer Manifest
-        manifest_path = os.path.join(TARGET_FOLDER, "hardware_ready_85acc.pt")
+        manifest_path = os.path.join(TARGET_FOLDER, "pure_integer_model.pt")
         if not os.path.exists(manifest_path):
             raise FileNotFoundError(f"Missing {manifest_path}. Export from Phase 5 first.")
             

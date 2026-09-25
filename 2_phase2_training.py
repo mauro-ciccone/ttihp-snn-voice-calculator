@@ -12,9 +12,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._back
 
 # --- SETUP ---
 # Update this to match your newly created folder from 0_init.py!
-TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
+TARGET_FOLDER = "experiments/0924_1200_64_neuron_model" 
 MODEL_NAME = "model_best.pth"
-EPOCHS_TO_RUN = 0
+EPOCHS_TO_RUN = 300
 # -------------
 
 def run_evaluation(model, data_loader, device, idx_noise, idx_silence):
@@ -150,7 +150,7 @@ def main():
             checkpoint = {"epoch": 0, "best_test_acc": 0.0}
             print(">>> Loaded initial model weights.")
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=5, min_lr=1e-7)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.85, patience=3, min_lr=1e-7)
     
     # 3. Training Loop
     for epoch in range(start_epoch, start_epoch + EPOCHS_TO_RUN):
@@ -244,7 +244,7 @@ def main():
             
             beta_dists = (all_betas.unsqueeze(1) - valid_betas.unsqueeze(0)) ** 2
             loss_beta_snap = beta_dists.min(dim=1)[0].mean()
-            loss = loss + 10.0 * loss_beta_snap
+            loss = loss + 15.0 * loss_beta_snap
 
             # 3. Unified Global Silicon Budget (The Area Wall)
             beta_weights = torch.nn.functional.softmax(-1000.0 * beta_dists, dim=1)

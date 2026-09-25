@@ -9,8 +9,8 @@ from utils_ledger import load_ledger
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
-TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-MODEL_NAME = "phase3_84.6acc.pth" # Ensure this points to your 87.1% weights
+TARGET_FOLDER = "experiments/0924_1200_64_neuron_model" 
+MODEL_NAME = "phase3_model_best.pth" # Ensure this points to your 87.1% weights
 
 # --- HARDWARE CONSTANTS ---
 VALID_BETAS = torch.tensor([
@@ -211,7 +211,7 @@ def main():
     results = []
     
     # Micro-Sweep: Zooming in on the 1480 -> 1300 bit cliff
-    alphas = torch.linspace(0.66, 0.32, steps=30)
+    alphas = torch.linspace(0.44, 0.4, steps=20)
     
     for alpha in alphas:
         # Interpolate heterogeneous bit widths
@@ -244,7 +244,7 @@ def main():
     print("=======================================================")
     
     # Target thresholds: 86%, 85%, 84%, 82%, 80%
-    targets = [86.0, 85.0, 84.0, 82.0, 80.0]
+    targets = [86.0, 85.0, 84.0, 82.0, 80.0, 78.0, 75.0, 70.0, 65.0, 63.0, 60.0]
     best_configs = {}
     
     for target in targets:

@@ -5,15 +5,14 @@ from tqdm import tqdm
 from dataset_cached import get_cached_dataloaders
 from model import FastSpikingNet
 from utils_ledger import load_ledger, get_latest_commit, append_commit
-import snntorch as snn
 from snntorch import surrogate
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
-TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
-MODEL_NAME = "phase3_84.6acc.pth"
-EPOCHS_TO_RUN = 0
+TARGET_FOLDER = "experiments/0924_1200_64_neuron_model" 
+MODEL_NAME = "phase3_model_best.pth"
+EPOCHS_TO_RUN = 300
 
 # --- HARDWARE CONSTANTS ---
 VALID_BETAS = torch.tensor([
@@ -27,14 +26,26 @@ VALID_BETAS = torch.tensor([
     0.8750, 0.8906, 0.9062, 0.9219, 0.9375, 0.9531, 0.9688, 0.9844, 1.0000
 ])
 
+FRAC_BITS = torch.tensor([
+    0.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 
+    3.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 
+    2.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 
+    3.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 
+    1.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 
+    3.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 
+    2.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 
+    3.0, 6.0, 5.0, 6.0, 4.0, 6.0, 5.0, 6.0, 0.0
+])
+
 def get_snapped_hardware(beta_tensor, device):
     valid_betas = VALID_BETAS.to(device)
+    frac_bits = FRAC_BITS.to(device)
     dists = (beta_tensor.unsqueeze(1) - valid_betas.unsqueeze(0)) ** 2
     best_indices = dists.argmin(dim=1)
-    return valid_betas[best_indices]
+    return valid_betas[best_indices], frac_bits[best_indices]
 
 # ======================================================================
-# Phase 3 QAT: Pure Integer Weights & Hardware Betas (No Custom Math)
+# Phase 3 QAT: Integers + Betas + Truncation + SNAPPED THRESHOLDS
 # ======================================================================
 class Phase3QATNet(nn.Module):
     def __init__(self, orig_model, config, device):
@@ -43,14 +54,14 @@ class Phase3QATNet(nn.Module):
         self.num_hidden = config["num_hidden"]
         self.num_outputs = config["num_outputs"]
         
-        self.spike_grad = surrogate.fast_sigmoid(slope=75)
+        self.spike_grad = surrogate.fast_sigmoid(slope=100)
 
-        # 1. Learnable Floating-Point Shadows
+        # 1. Weights
         self.w_in = nn.Parameter(orig_model.fc_in.weight.data.clone())
         self.w_rec = nn.Parameter(orig_model.fc_rec.weight.data.clone())
         self.w_out = nn.Parameter(orig_model.fc_out.weight.data.clone())
         
-        # 2. Extract Static Phase 2 Deltas
+        # 2. Hardware Extraction
         with torch.no_grad():
             def calc_delta(w):
                 return (torch.quantile(torch.abs(w), 0.985) + 1e-8) / 127.0
@@ -58,49 +69,90 @@ class Phase3QATNet(nn.Module):
             self.delta_in = calc_delta(self.w_in)
             self.delta_rec = calc_delta(self.w_rec)
             self.delta_out = calc_delta(self.w_out)
+            self.delta_hid = min(self.delta_in, self.delta_rec)
 
-            # Snap betas to hardware limits
             beta_hid_raw = orig_model.lif_hidden.beta.data.clone()
             beta_out_raw = orig_model.lif_out.beta.data.clone()
-            self.beta_hid = get_snapped_hardware(beta_hid_raw, device)
-            self.beta_out = get_snapped_hardware(beta_out_raw, device)
+            self.beta_hid, self.frac_bits_hid = get_snapped_hardware(beta_hid_raw, device)
+            self.beta_out, self.frac_bits_out = get_snapped_hardware(beta_out_raw, device)
             
-        # 3. Native snnTorch Neurons (Guaranteeing bug-free integration math)
-        self.lif_hidden = snn.Leaky(beta=self.beta_hid, spike_grad=self.spike_grad, reset_mechanism="zero")
-        self.lif_out = snn.Leaky(beta=self.beta_out, spike_grad=self.spike_grad, reset_mechanism="zero")
+            # Physical LSB bounds
+            self.lsb_hid = self.delta_hid / (2.0 ** self.frac_bits_hid)
+            self.lsb_out = self.delta_out / (2.0 ** self.frac_bits_out)
+
+            # --- ISOLATED CONSTRAINT: HARDWARE-SNAPPED THRESHOLDS ---
+            self.thresh_hid = torch.round(1.0 / self.delta_hid) * self.delta_hid
+            self.thresh_out = torch.round(1.0 / self.delta_out) * self.delta_out
+
+            # --- NEW: PARETO OPTIMAL REGISTER OVERFLOW LIMITS ---
+            pareto_path = os.path.join(TARGET_FOLDER, "pareto_config_65.0.pt")
+            if os.path.exists(pareto_path):
+                pareto_cfg = torch.load(pareto_path, map_location=device)
+                int_bits_hid = pareto_cfg["int_bits_hid"].to(device)
+                int_bits_out = pareto_cfg["int_bits_out"].to(device)
+                print(f">>> Loaded Pareto Hardware Bounds: {(int_bits_hid + self.frac_bits_hid).sum().item() + (int_bits_out + self.frac_bits_out).sum().item():.0f} Total DFFs")
+            else:
+                raise FileNotFoundError(f"Pareto config not found at {pareto_path}")
+
+            self.max_mem_hid = (2.0 ** (int_bits_hid + self.frac_bits_hid)) - 1.0
+            self.max_mem_out = (2.0 ** (int_bits_out + self.frac_bits_out)) - 1.0
 
     def forward(self, x):
         batch = x.size(0)
         time_steps = x.size(1)
         
         # --- STE Weight Quantization ---
-        # The torch.round function natively severs anything between -0.49 and 0.49!
         w_in_ste = (torch.round(self.w_in / self.delta_in) - self.w_in / self.delta_in).detach() + self.w_in / self.delta_in
         w_rec_ste = (torch.round(self.w_rec / self.delta_rec) - self.w_rec / self.delta_rec).detach() + self.w_rec / self.delta_rec
         w_out_ste = (torch.round(self.w_out / self.delta_out) - self.w_out / self.delta_out).detach() + self.w_out / self.delta_out
         
-        # Scale back to floating point for integration
         w_in_eff = w_in_ste * self.delta_in
         w_rec_eff = w_rec_ste * self.delta_rec
         w_out_eff = w_out_ste * self.delta_out
 
-        mem_hid = self.lif_hidden.init_leaky()
-        mem_out = self.lif_out.init_leaky()
+        # Manual State Initialization
+        mem_hid = torch.zeros(batch, self.num_hidden, device=self.device)
+        mem_out = torch.zeros(batch, self.num_outputs, device=self.device)
         spk_hid = torch.zeros(batch, self.num_hidden, device=self.device)
         
         spk_out_rec, spk_hid_rec = [], []
 
         for step in range(time_steps):
             
-            # Standard Dense MAC (But strictly using integer-rounded weights)
             cur_in = torch.matmul(x[:, step, :], w_in_eff.t())
             cur_rec = torch.matmul(spk_hid, w_rec_eff.t())
             
-            spk_hid, mem_hid = self.lif_hidden(cur_in + cur_rec, mem_hid)
+            # --- 1. HIDDEN INTEGRATION & LSB REGISTER SNAP ---
+            ideal_mem_hid = (mem_hid * self.beta_hid.unsqueeze(0)) + cur_in + cur_rec
+            
+            # Clamp to Signed Register Limits (Preserving Inhibition!)
+            limit_hid = (self.max_mem_hid * self.lsb_hid).unsqueeze(0)
+            ideal_mem_hid = torch.clamp(ideal_mem_hid, min=-limit_hid, max=limit_hid)
+            
+            # Verilog-accurate bit-shift truncation (Epsilon-shielded floor)
+            hw_mem_hid = torch.floor((ideal_mem_hid / self.lsb_hid.unsqueeze(0)) + 1e-5) * self.lsb_hid.unsqueeze(0)
+            mem_hid = (hw_mem_hid - ideal_mem_hid).detach() + ideal_mem_hid
+            
+            # Evaluate against HARDWARE INTEGER THRESHOLD
+            spk_hid = self.spike_grad(mem_hid - self.thresh_hid)
+            mem_hid = mem_hid * (1.0 - spk_hid.detach())  # Reset mechanism
             spk_hid_rec.append(spk_hid)
             
+            # --- 2. OUTPUT INTEGRATION & LSB REGISTER SNAP ---
             cur_out = torch.matmul(spk_hid, w_out_eff.t())
-            spk_out, mem_out = self.lif_out(cur_out, mem_out)
+            ideal_mem_out = (mem_out * self.beta_out.unsqueeze(0)) + cur_out
+            
+            # Clamp to Signed Register Limits (Preserving Inhibition!)
+            limit_out = (self.max_mem_out * self.lsb_out).unsqueeze(0)
+            ideal_mem_out = torch.clamp(ideal_mem_out, min=-limit_out, max=limit_out)
+            
+            # Verilog-accurate bit-shift truncation (Epsilon-shielded floor)
+            hw_mem_out = torch.floor((ideal_mem_out / self.lsb_out.unsqueeze(0)) + 1e-5) * self.lsb_out.unsqueeze(0)
+            mem_out = (hw_mem_out - ideal_mem_out).detach() + ideal_mem_out
+            
+            # Evaluate against HARDWARE INTEGER THRESHOLD
+            spk_out = self.spike_grad(mem_out - self.thresh_out)
+            mem_out = mem_out * (1.0 - spk_out.detach())
             spk_out_rec.append(spk_out)
             
         return torch.stack(spk_out_rec, dim=1), torch.stack(spk_hid_rec, dim=1)
@@ -142,12 +194,11 @@ def main():
     ledger = load_ledger(TARGET_FOLDER)
     config = ledger["base_config"]
     
-    print(f"\n=== Training Pipeline (Phase 3: Progressive Quantization-Aware Training) ===")
+    print(f"\n=== Training Pipeline (Phase 3: Hardware Threshold Verification) ===")
     
     train_loader, test_loader, labels_map = get_cached_dataloaders("data_cache", batch_size=config["batch_size"])
     idx_noise = labels_map.get("noise", 6)
     idx_silence = labels_map.get("silence", 7)
-
     inv_labels = {v: k for k, v in labels_map.items()}
     num_classes = config["num_outputs"]
     
@@ -164,10 +215,10 @@ def main():
         orig_model.load_state_dict(base_state, strict=False)
         print(">>> Loaded base Phase 2 model for correct hardware betas.")
 
-    # 2. Wrap in Phase3QATNet (this extracts and locks the correct snapped betas)
+    # 2. Wrap in Phase3QATNet 
     model = Phase3QATNet(orig_model, config, device).to(device)
     
-    # 3. If MODEL_NAME points to a Phase 3 checkpoint, load its trained weights directly
+    # 3. Load Phase 3 checkpoint weights
     target_checkpoint_path = os.path.join(TARGET_FOLDER, MODEL_NAME)
     best_test_acc = 0.0
     
@@ -187,11 +238,9 @@ def main():
     else:
         print(">>> Starting fresh from Phase 2 baseline weights.")
     
-    # 1e-4 LR provides a soft landing into strict integers
-    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-6)
-    
-    best_test_acc = 0.0
+    # continue from the last lr checkpoint
+    optimizer = torch.optim.Adam(model.parameters(), lr=1.27e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=3, min_lr=1e-7)
     
     for epoch in range(EPOCHS_TO_RUN):
         model.train()
@@ -260,7 +309,7 @@ def main():
 
         if train_acc >= best_test_acc:
             best_test_acc = train_acc
-            torch.save({"model_state_dict": model.state_dict()}, os.path.join(TARGET_FOLDER, "phase3_model_best.pth"))
+            torch.save({"model_state_dict": model.state_dict(), "best_test_acc": best_test_acc}, os.path.join(TARGET_FOLDER, "phase3_model_best.pth"))
             print(f"   🌟 New Best Phase 3 Acc! Saved phase3_model_best.pth")
 
     # ======================================================================

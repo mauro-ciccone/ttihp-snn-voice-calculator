@@ -6,7 +6,7 @@ from utils_ledger import load_ledger
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
-TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
+TARGET_FOLDER = "experiments/0924_1200_64_neuron_model" 
 
 NUM_KEYWORDS = 5
 NUM_INPUTS = 6 

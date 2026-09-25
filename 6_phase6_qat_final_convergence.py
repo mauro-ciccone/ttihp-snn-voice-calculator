@@ -9,7 +9,7 @@ from utils_ledger import load_ledger
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torchaudio._backend.utils")
 
-TARGET_FOLDER = "experiments/0924_1200_64_neuron_model" 
+TARGET_FOLDER = "experiments/0916_2317_6_neuron_cochlea_no_vier" 
 GENERATIONS = 0 
 POP_SIZE = 10
 MUTATION_RATE = 0.05
